@@ -10,6 +10,7 @@ import { DetailEditor } from "@/components/organization/detail-editor";
 import { ProjectList } from "@/components/organization/project-list";
 import { TaskBoard } from "@/components/tasks/task-board";
 import { getAreaDetail, getCatalog } from "@/lib/organization/queries";
+import { getLocalToday } from "@/lib/profile/queries";
 import { getTasksInArea } from "@/lib/tasks/queries";
 
 export const metadata: Metadata = {
@@ -30,8 +31,7 @@ async function AreaContent({ params }: TProps) {
     notFound();
   }
 
-  const now = new Date();
-  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  const today = await getLocalToday();
   const [detailResult, taskResult, catalog] = await Promise.all([getAreaDetail(id), getTasksInArea(id), getCatalog()]);
 
   if (detailResult.error || taskResult.error) {

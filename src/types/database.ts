@@ -50,6 +50,27 @@ export type Database = {
         }
         Relationships: []
       }
+      profiles: {
+        Row: {
+          created_at: string
+          timezone: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          timezone: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          timezone?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       projects: {
         Row: {
           area_id: string
@@ -156,17 +177,17 @@ export type Database = {
           area_id: string | null
           completed_at: string | null
           created_at: string
+          day_position: number | null
           description: string | null
           due_date: string | null
           id: string
-          in_today: boolean
           position: number
           priority: string
           project_id: string | null
+          scheduled_date: string | null
           status: string
           template_id: string | null
           title: string
-          today_position: number | null
           updated_at: string
           user_id: string
         }
@@ -174,17 +195,17 @@ export type Database = {
           area_id?: string | null
           completed_at?: string | null
           created_at?: string
+          day_position?: number | null
           description?: string | null
           due_date?: string | null
           id?: string
-          in_today?: boolean
           position?: number
           priority?: string
           project_id?: string | null
+          scheduled_date?: string | null
           status?: string
           template_id?: string | null
           title: string
-          today_position?: number | null
           updated_at?: string
           user_id: string
         }
@@ -192,17 +213,17 @@ export type Database = {
           area_id?: string | null
           completed_at?: string | null
           created_at?: string
+          day_position?: number | null
           description?: string | null
           due_date?: string | null
           id?: string
-          in_today?: boolean
           position?: number
           priority?: string
           project_id?: string | null
+          scheduled_date?: string | null
           status?: string
           template_id?: string | null
           title?: string
-          today_position?: number | null
           updated_at?: string
           user_id?: string
         }

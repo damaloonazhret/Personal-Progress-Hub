@@ -20,6 +20,7 @@ import {
 import {
   applyTaskUpdate,
   formatTaskCount,
+  isSameTodayGroup,
   type TOptimisticUpdate,
   type TTask,
   type TTaskPlace,
@@ -36,8 +37,8 @@ type TProps = {
 };
 
 const emptyCopy: Record<TTaskScope["view"], string> = {
-  inbox: "Во входящих пусто. Новая задача появится здесь, пока её не возьмёшь на сегодня и не положишь в сферу или проект.",
-  today: "На сегодня ничего не выбрано. Этот список не заполняется по срокам и не очищается на следующий день.",
+  inbox: "Во входящих пусто. Здесь лежат активные задачи без сферы и проекта. Дата планирования их отсюда не убирает.",
+  today: "На сегодня ничего не запланировано. Незавершённая задача с прошедшей датой остаётся здесь. Срок сам по себе сюда не добавляет.",
   completed: "Выполненных задач пока нет. Завершённая задача попадёт сюда, и её можно будет вернуть.",
   project: "В проекте пока нет активных задач.",
   area: "В сфере пока нет задач вне проектов.",
@@ -45,7 +46,7 @@ const emptyCopy: Record<TTaskScope["view"], string> = {
 
 export function TaskBoard({ tasks, scope, today, loadError, catalog, showFilters = false }: TProps) {
   const [optimisticTasks, applyOptimistic] = useOptimistic(tasks, (current: TTask[], update: TOptimisticUpdate) =>
-    applyTaskUpdate(current, update, scope),
+    applyTaskUpdate(current, update, scope, today),
   );
   const [error, setError] = useState<string | null>(null);
   const [areaFilter, setAreaFilter] = useState("");
@@ -100,14 +101,17 @@ export function TaskBoard({ tasks, scope, today, loadError, catalog, showFilters
   };
 
   const handleAddToToday = (id: string) => {
-    const update: TOptimisticUpdate =
-      scope.view === "inbox" ? { type: "remove", id } : { type: "patch", id, patch: { inToday: true } };
-    void run(update, () => addTaskToToday(id));
+    void run(
+      { type: "patch", id, patch: { scheduledDate: today, dayPosition: Number.MAX_SAFE_INTEGER } },
+      () => addTaskToToday(id),
+    );
   };
 
   const handleRemoveFromToday = (id: string) => {
     const update: TOptimisticUpdate =
-      scope.view === "today" ? { type: "remove", id } : { type: "patch", id, patch: { inToday: false } };
+      scope.view === "today"
+        ? { type: "remove", id }
+        : { type: "patch", id, patch: { scheduledDate: null, dayPosition: null } };
     void run(update, () => removeTaskFromToday(id));
   };
 
@@ -167,7 +171,7 @@ export function TaskBoard({ tasks, scope, today, loadError, catalog, showFilters
   return (
     <div className="flex flex-col gap-4">
       {canCreate ? (
-        <TaskComposer place={place} projectId={scope.projectId ?? null} areaId={scope.areaId ?? null} onCreate={handleCreate} />
+        <TaskComposer place={place} today={today} projectId={scope.projectId ?? null} areaId={scope.areaId ?? null} onCreate={handleCreate} />
       ) : null}
       {showFilters && catalog ? (
         <div className="grid gap-3 sm:grid-cols-2">
@@ -226,14 +230,21 @@ export function TaskBoard({ tasks, scope, today, loadError, catalog, showFilters
       ) : null}
       {filteredTasks.length > 0 ? (
         <ul className="flex flex-col gap-3">
-          {filteredTasks.map((task, index) => (
+          {filteredTasks.map((task, index) => {
+            const isTodayView = scope.view === "today";
+            const isMoveUpDisabled = isTodayView ? !isSameTodayGroup(filteredTasks[index - 1], task) : index === 0;
+            const isMoveDownDisabled = isTodayView
+              ? !isSameTodayGroup(task, filteredTasks[index + 1])
+              : index === filteredTasks.length - 1;
+
+            return (
             <TaskRow
               key={task.id}
               task={task}
               view={scope.view}
               today={today}
-              isFirst={index === 0}
-              isLast={index === filteredTasks.length - 1}
+              isMoveUpDisabled={isMoveUpDisabled}
+              isMoveDownDisabled={isMoveDownDisabled}
               onComplete={handleComplete}
               onRestore={handleRestore}
               onAddToToday={handleAddToToday}
@@ -244,7 +255,8 @@ export function TaskBoard({ tasks, scope, today, loadError, catalog, showFilters
               catalog={catalog}
               onPlace={handlePlace}
             />
-          ))}
+            );
+          })}
         </ul>
       ) : null}
     </div>

@@ -8,12 +8,13 @@ import { createTaskSchema, zodMessage, type TTask, type TTaskPlace } from "@/lib
 
 type TProps = {
   place: TTaskPlace;
+  today: string;
   projectId?: string | null;
   areaId?: string | null;
   onCreate: (task: TTask) => Promise<{ error: string | null }>;
 };
 
-export function TaskComposer({ place, projectId = null, areaId = null, onCreate }: TProps) {
+export function TaskComposer({ place, today, projectId = null, areaId = null, onCreate }: TProps) {
   const [title, setTitle] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isPending, setIsPending] = useState(false);
@@ -40,9 +41,9 @@ export function TaskComposer({ place, projectId = null, areaId = null, onCreate 
       status: "todo",
       priority: "medium",
       dueDate: null,
-      inToday: place === "today",
+      scheduledDate: place === "today" ? today : null,
       position: Number.MAX_SAFE_INTEGER,
-      todayPosition: place === "today" ? Number.MAX_SAFE_INTEGER : null,
+      dayPosition: place === "today" ? Number.MAX_SAFE_INTEGER : null,
       completedAt: null,
       projectId,
       areaId,

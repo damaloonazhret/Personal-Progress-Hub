@@ -2,6 +2,7 @@
 
 import { requireUser } from "@/lib/auth/session";
 import { revalidateWork } from "@/lib/app/revalidate";
+import { getLocalToday } from "@/lib/profile/queries";
 import {
   createTaskSchema,
   editTaskSchema,
@@ -33,19 +34,19 @@ function revalidateTasks() {
   revalidateWork();
 }
 
-async function nextTodayPosition(userId: string) {
+async function nextDayPosition(userId: string, scheduledDate: string, priority: string) {
   const { supabase } = await requireUser();
   const { data } = await supabase
     .from("tasks")
-    .select("today_position")
+    .select("day_position")
     .eq("user_id", userId)
-    .eq("status", "todo")
-    .eq("in_today", true)
-    .order("today_position", { ascending: false })
+    .eq("scheduled_date", scheduledDate)
+    .eq("priority", priority)
+    .order("day_position", { ascending: false })
     .limit(1)
     .maybeSingle();
 
-  return (data?.today_position ?? -1) + 1;
+  return (data?.day_position ?? -1) + 1;
 }
 
 async function nextListPosition(userId: string, placement: { projectId: string | null; areaId: string | null }) {
@@ -116,7 +117,8 @@ export async function createTask(input: {
   }
 
   const position = await nextListPosition(userId, placement);
-  const todayPosition = parsed.data.place === "today" ? await nextTodayPosition(userId) : null;
+  const scheduledDate = parsed.data.place === "today" ? await getLocalToday() : null;
+  const dayPosition = scheduledDate ? await nextDayPosition(userId, scheduledDate, "medium") : null;
   const { error } = await supabase.from("tasks").insert({
     user_id: userId,
     title: parsed.data.title,
@@ -124,8 +126,8 @@ export async function createTask(input: {
     priority: "medium",
     due_date: null,
     status: "todo",
-    in_today: parsed.data.place === "today",
-    today_position: todayPosition,
+    scheduled_date: scheduledDate,
+    day_position: dayPosition,
     position,
     project_id: placement.projectId,
     area_id: placement.areaId,
@@ -170,8 +172,8 @@ export async function createTaskFromTemplate(templateId: string): Promise<TTaskA
     priority,
     due_date: null,
     status: "todo",
-    in_today: false,
-    today_position: null,
+    scheduled_date: null,
+    day_position: null,
     position,
     project_id: template.project_id,
     area_id: template.area_id,
@@ -260,10 +262,28 @@ export async function addTaskToToday(id: string) {
   }
 
   const { supabase, userId } = await requireUser();
-  const todayPosition = await nextTodayPosition(userId);
+  const { data: task, error: taskError } = await supabase
+    .from("tasks")
+    .select("priority, scheduled_date")
+    .eq("id", parsed.data)
+    .eq("user_id", userId)
+    .eq("status", "todo")
+    .maybeSingle();
+
+  if (taskError || !task) {
+    return failed();
+  }
+
+  const localToday = await getLocalToday();
+
+  if (task.scheduled_date === localToday) {
+    return ok();
+  }
+
+  const dayPosition = await nextDayPosition(userId, localToday, task.priority);
   const { data, error } = await supabase
     .from("tasks")
-    .update({ in_today: true, today_position: todayPosition })
+    .update({ scheduled_date: localToday, day_position: dayPosition })
     .eq("id", parsed.data)
     .eq("user_id", userId)
     .eq("status", "todo")
@@ -287,7 +307,7 @@ export async function removeTaskFromToday(id: string) {
   const { supabase, userId } = await requireUser();
   const { data, error } = await supabase
     .from("tasks")
-    .update({ in_today: false })
+    .update({ scheduled_date: null, day_position: null })
     .eq("id", parsed.data)
     .eq("user_id", userId)
     .eq("status", "todo")
@@ -410,15 +430,15 @@ export async function moveTask(id: string, direction: TTaskDirection, scope: TTa
     }
 
     if (scope.view === "today") {
-      const todayPosition = task.todayPosition ?? 0;
+      const dayPosition = task.dayPosition ?? 0;
 
-      if (previous.todayPosition === todayPosition) {
+      if (previous.dayPosition === dayPosition) {
         continue;
       }
 
       const { error } = await supabase
         .from("tasks")
-        .update({ today_position: todayPosition })
+        .update({ day_position: dayPosition })
         .eq("id", task.id)
         .eq("user_id", userId);
 

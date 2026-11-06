@@ -9,6 +9,7 @@ import { SectionPage } from "@/components/layout/section-page";
 import { DetailEditor } from "@/components/organization/detail-editor";
 import { TaskBoard } from "@/components/tasks/task-board";
 import { getCatalog, getProjectDetail } from "@/lib/organization/queries";
+import { getLocalToday } from "@/lib/profile/queries";
 import { getProjectTasks } from "@/lib/tasks/queries";
 
 export const metadata: Metadata = {
@@ -29,8 +30,7 @@ async function ProjectContent({ params }: TProps) {
     notFound();
   }
 
-  const now = new Date();
-  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  const today = await getLocalToday();
   const [projectResult, taskResult, catalog] = await Promise.all([getProjectDetail(id), getProjectTasks(id), getCatalog()]);
 
   if (projectResult.error || taskResult.error) {

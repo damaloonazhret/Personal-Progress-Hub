@@ -10,6 +10,7 @@ import {
   formatCompletedAt,
   formatDueDate,
   isPastDueDate,
+  isTodayTask,
   priorityLabels,
   taskPriorities,
   zodMessage,
@@ -30,8 +31,8 @@ type TProps = {
   task: TTask;
   view: TTaskView;
   today: string;
-  isFirst: boolean;
-  isLast: boolean;
+  isMoveUpDisabled: boolean;
+  isMoveDownDisabled: boolean;
   onComplete: (id: string) => void;
   onRestore: (id: string) => void;
   onAddToToday: (id: string) => void;
@@ -47,8 +48,8 @@ export function TaskRow({
   task,
   view,
   today,
-  isFirst,
-  isLast,
+  isMoveUpDisabled,
+  isMoveDownDisabled,
   onComplete,
   onRestore,
   onAddToToday,
@@ -68,16 +69,15 @@ export function TaskRow({
   const [priority, setPriority] = useState<TTaskPriority>(task.priority);
   const [dueDate, setDueDate] = useState(task.dueDate ?? "");
   const canReorder = view !== "completed";
-  const isMoveUpDisabled = isFirst;
-  const isMoveDownDisabled = isLast;
   const showDueDate = Boolean(task.dueDate);
   const dueDateIsPast = Boolean(task.dueDate) && isPastDueDate(task.dueDate ?? "", today);
   const projectName = catalog?.projects.find((project) => project.id === task.projectId)?.name ?? null;
   const areaName = catalog?.areas.find((area) => area.id === task.areaId)?.name ?? null;
   const showPlacement = Boolean(onPlace && catalog);
   const placementValue = task.projectId ? `project:${task.projectId}` : task.areaId ? `area:${task.areaId}` : "inbox";
-  const showAddToToday = view !== "completed" && view !== "today" && !task.inToday;
-  const showRemoveFromToday = view !== "completed" && task.inToday;
+  const isScheduledForToday = isTodayTask(task, today);
+  const showAddToToday = view !== "completed" && view !== "today" && !isScheduledForToday;
+  const showRemoveFromToday = view !== "completed" && isScheduledForToday;
   const hasAreas = Boolean(catalog && catalog.areas.length > 0);
   const hasProjects = Boolean(catalog && catalog.projects.length > 0);
   const locationLabel = projectName ? `Проект: ${projectName}` : areaName ? `Сфера: ${areaName}` : null;

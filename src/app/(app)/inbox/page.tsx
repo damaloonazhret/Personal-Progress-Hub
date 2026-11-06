@@ -13,7 +13,7 @@ export default function InboxPage() {
     <TaskScreen
       view="inbox"
       title="Входящие"
-      description="Активные задачи без сферы и проекта, которые ещё не взяты на сегодня."
+      description="Активные задачи без сферы и проекта. Дата планирования их отсюда не убирает."
     />
   );
 }

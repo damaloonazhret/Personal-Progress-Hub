@@ -21,13 +21,19 @@ export type TTask = {
   status: TTaskStatus;
   priority: TTaskPriority;
   dueDate: string | null;
-  inToday: boolean;
+  scheduledDate: string | null;
   position: number;
-  todayPosition: number | null;
+  dayPosition: number | null;
   completedAt: string | null;
   projectId: string | null;
   areaId: string | null;
   createdAt: string;
+};
+
+const priorityRank: Record<TTaskPriority, number> = {
+  high: 0,
+  medium: 1,
+  low: 2,
 };
 
 export type TOptimisticUpdate =
@@ -88,15 +94,26 @@ export const priorityLabels: Record<TTaskPriority, string> = {
   high: "Высокий",
 };
 
-export function isInboxTask(task: Pick<TTask, "status" | "projectId" | "areaId" | "inToday">) {
-  return task.status === "todo" && task.projectId === null && task.areaId === null && !task.inToday;
+export function isInboxTask(task: Pick<TTask, "status" | "projectId" | "areaId">) {
+  return task.status === "todo" && task.projectId === null && task.areaId === null;
 }
 
-export function isTodayTask(task: Pick<TTask, "status" | "inToday">) {
-  return task.status === "todo" && task.inToday;
+export function isTodayTask(task: Pick<TTask, "status" | "scheduledDate">, localToday: string) {
+  return task.status === "todo" && task.scheduledDate !== null && task.scheduledDate <= localToday;
 }
 
-export function belongsToScope(task: TTask, scope: TTaskScope) {
+export function isSameTodayGroup(
+  left: Pick<TTask, "scheduledDate" | "priority"> | undefined,
+  right: Pick<TTask, "scheduledDate" | "priority"> | undefined,
+) {
+  if (!left || !right || left.scheduledDate === null || right.scheduledDate === null) {
+    return false;
+  }
+
+  return left.scheduledDate === right.scheduledDate && left.priority === right.priority;
+}
+
+export function belongsToScope(task: TTask, scope: TTaskScope, localToday: string) {
   if (scope.view === "project") {
     return task.status === "todo" && task.projectId === scope.projectId;
   }
@@ -113,16 +130,16 @@ export function belongsToScope(task: TTask, scope: TTaskScope) {
     return task.status === "done" && task.areaId === scope.areaId;
   }
 
-  return belongsToView(task, scope.view);
+  return belongsToView(task, scope.view, localToday);
 }
 
-export function belongsToView(task: TTask, view: TTaskView) {
+export function belongsToView(task: TTask, view: TTaskView, localToday: string) {
   if (view === "inbox") {
     return isInboxTask(task);
   }
 
   if (view === "today") {
-    return isTodayTask(task);
+    return isTodayTask(task, localToday);
   }
 
   if (view === "project" || view === "area") {
@@ -139,8 +156,10 @@ export function compareTasks(view: TTaskView) {
     }
 
     if (view === "today") {
-      const byTodayPosition = (left.todayPosition ?? 0) - (right.todayPosition ?? 0);
-      return byTodayPosition || left.createdAt.localeCompare(right.createdAt);
+      const byDate = (left.scheduledDate ?? "").localeCompare(right.scheduledDate ?? "");
+      const byPriority = priorityRank[left.priority] - priorityRank[right.priority];
+      const byDayPosition = (left.dayPosition ?? 0) - (right.dayPosition ?? 0);
+      return byDate || byPriority || byDayPosition || left.createdAt.localeCompare(right.createdAt);
     }
 
     return left.position - right.position || left.createdAt.localeCompare(right.createdAt);
@@ -156,20 +175,32 @@ export function moveTaskInList(tasks: TTask[], id: string, direction: TTaskDirec
     return ordered;
   }
 
+  if (view === "today" && !isSameTodayGroup(ordered[index], ordered[targetIndex])) {
+    return ordered;
+  }
+
   const next = ordered.slice();
   const [moved] = next.splice(index, 1);
   next.splice(targetIndex, 0, moved);
 
-  return next.map((task, position) => {
-    if (view === "today") {
-      return { ...task, todayPosition: position };
+  if (view !== "today") {
+    return next.map((task, position) => ({ ...task, position }));
+  }
+
+  let groupIndex = 0;
+
+  return next.map((task) => {
+    if (!isSameTodayGroup(task, moved)) {
+      return task;
     }
 
-    return { ...task, position };
+    const dayPosition = groupIndex;
+    groupIndex += 1;
+    return { ...task, dayPosition };
   });
 }
 
-export function applyTaskUpdate(tasks: TTask[], update: TOptimisticUpdate, scope: TTaskScope) {
+export function applyTaskUpdate(tasks: TTask[], update: TOptimisticUpdate, scope: TTaskScope, localToday: string) {
   if (update.type === "remove") {
     return tasks.filter((task) => task.id !== update.id);
   }
@@ -183,12 +214,12 @@ export function applyTaskUpdate(tasks: TTask[], update: TOptimisticUpdate, scope
   }
 
   if (update.type === "add") {
-    const next = belongsToScope(update.task, scope) ? [...tasks, update.task] : tasks;
+    const next = belongsToScope(update.task, scope, localToday) ? [...tasks, update.task] : tasks;
     return next.sort(compareTasks(scope.view));
   }
 
   const patched = tasks.map((task) => (task.id === update.id ? { ...task, ...update.patch } : task));
-  return patched.filter((task) => belongsToScope(task, scope)).sort(compareTasks(scope.view));
+  return patched.filter((task) => belongsToScope(task, scope, localToday)).sort(compareTasks(scope.view));
 }
 
 export function formatTaskCount(count: number) {
