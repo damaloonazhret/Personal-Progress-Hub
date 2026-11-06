@@ -139,6 +139,53 @@ export async function createTask(input: {
   return ok();
 }
 
+export async function createTaskFromTemplate(templateId: string): Promise<TTaskActionState> {
+  const parsed = taskIdSchema.safeParse(templateId);
+
+  if (!parsed.success) {
+    return failed("Не удалось создать задачу из шаблона.");
+  }
+
+  const { supabase, userId } = await requireUser();
+  const { data: template, error: templateError } = await supabase
+    .from("task_templates")
+    .select("id, title, description, priority, area_id, project_id")
+    .eq("id", parsed.data)
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (templateError || !template) {
+    return failed("Не удалось создать задачу из шаблона.");
+  }
+
+  const priority = template.priority === "low" || template.priority === "high" ? template.priority : "medium";
+  const position = await nextListPosition(userId, {
+    projectId: template.project_id,
+    areaId: template.area_id,
+  });
+  const { error } = await supabase.from("tasks").insert({
+    user_id: userId,
+    title: template.title,
+    description: template.description,
+    priority,
+    due_date: null,
+    status: "todo",
+    in_today: false,
+    today_position: null,
+    position,
+    project_id: template.project_id,
+    area_id: template.area_id,
+    template_id: template.id,
+  });
+
+  if (error) {
+    return failed("Не удалось создать задачу из шаблона.");
+  }
+
+  revalidateTasks();
+  return ok();
+}
+
 export async function updateTask(input: {
   id: string;
   title: string;

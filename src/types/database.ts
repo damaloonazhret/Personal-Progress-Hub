@@ -97,6 +97,60 @@ export type Database = {
           },
         ]
       }
+      task_templates: {
+        Row: {
+          area_id: string | null
+          created_at: string
+          description: string | null
+          id: string
+          position: number
+          priority: string
+          project_id: string | null
+          title: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          area_id?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          position?: number
+          priority?: string
+          project_id?: string | null
+          title: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          area_id?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          position?: number
+          priority?: string
+          project_id?: string | null
+          title?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "task_templates_area_user_fkey"
+            columns: ["user_id", "area_id"]
+            isOneToOne: false
+            referencedRelation: "areas"
+            referencedColumns: ["user_id", "id"]
+          },
+          {
+            foreignKeyName: "task_templates_project_area_user_fkey"
+            columns: ["user_id", "project_id", "area_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["user_id", "id", "area_id"]
+          },
+        ]
+      }
       tasks: {
         Row: {
           area_id: string | null
@@ -110,6 +164,7 @@ export type Database = {
           priority: string
           project_id: string | null
           status: string
+          template_id: string | null
           title: string
           today_position: number | null
           updated_at: string
@@ -127,6 +182,7 @@ export type Database = {
           priority?: string
           project_id?: string | null
           status?: string
+          template_id?: string | null
           title: string
           today_position?: number | null
           updated_at?: string
@@ -144,6 +200,7 @@ export type Database = {
           priority?: string
           project_id?: string | null
           status?: string
+          template_id?: string | null
           title?: string
           today_position?: number | null
           updated_at?: string
@@ -163,6 +220,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "projects"
             referencedColumns: ["user_id", "id", "area_id"]
+          },
+          {
+            foreignKeyName: "tasks_template_user_fkey"
+            columns: ["user_id", "template_id"]
+            isOneToOne: false
+            referencedRelation: "task_templates"
+            referencedColumns: ["user_id", "id"]
           },
         ]
       }

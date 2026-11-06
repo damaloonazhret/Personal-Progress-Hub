@@ -9,4 +9,5 @@ export function revalidateWork() {
   revalidatePath("/projects/[id]", "page");
   revalidatePath("/areas");
   revalidatePath("/areas/[id]", "page");
+  revalidatePath("/templates");
 }

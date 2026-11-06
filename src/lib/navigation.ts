@@ -2,6 +2,7 @@ import {
   CheckCircle2,
   FolderKanban,
   Inbox,
+  Files,
   Layers,
   LayoutDashboard,
   ListChecks,
@@ -21,6 +22,7 @@ export const primaryNavItems: TNavItem[] = [
   { href: "/today", label: "Сегодня", icon: ListChecks },
   { href: "/projects", label: "Проекты", icon: FolderKanban },
   { href: "/areas", label: "Сферы", icon: Layers },
+  { href: "/templates", label: "Шаблоны", icon: Files },
   { href: "/completed", label: "Готово", icon: CheckCircle2 },
 ];
 
