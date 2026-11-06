@@ -11,7 +11,7 @@
 
 ## Дальше
 
-- [ ] Phase 3 — Authentication. Signup, login, logout, защита маршрутов.
+- [x] Phase 3 — Authentication. Email и пароль, сессия, защита маршрутов, подтверждение почты.
 - [ ] Phase 4 — Core tasks. CRUD, выполнение, Inbox и Today.
 - [ ] Phase 5 — Projects и Areas, группировка, прогресс, фильтры.
 - [ ] Phase 6 — Dashboard.

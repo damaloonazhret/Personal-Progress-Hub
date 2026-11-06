@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { LogoutButton } from "@/components/auth/logout-button";
 import { BottomNav } from "@/components/layout/bottom-nav";
 import { SidebarNav } from "@/components/layout/sidebar-nav";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
@@ -25,6 +26,7 @@ export function AppShell({ children }: TProps) {
               Настройки
             </Link>
             <ThemeToggle />
+            <LogoutButton />
           </div>
         </header>
         <main className="flex-1 px-4 py-6 pb-24 md:px-8 md:pb-8">{children}</main>
