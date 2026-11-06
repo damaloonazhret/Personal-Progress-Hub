@@ -1,16 +1,19 @@
 import type { Metadata } from "next";
 
-import { SectionPage } from "@/components/layout/section-page";
+import { TaskScreen } from "@/components/tasks/task-screen";
 
 export const metadata: Metadata = {
   title: "Сегодня",
 };
 
+export const instant = false;
+
 export default function TodayPage() {
   return (
-    <SectionPage
+    <TaskScreen
+      view="today"
       title="Сегодня"
-      description="Здесь будет список задач, которые ты сам выбрал на сегодня. Невыполненная задача не станет просроченной на следующий день."
+      description="Задачи, которые ты сам выбрал на сегодня. Невыполненная задача остаётся здесь и на следующий день."
     />
   );
 }

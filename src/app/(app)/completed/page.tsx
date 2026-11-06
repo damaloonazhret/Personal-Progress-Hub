@@ -1,16 +1,19 @@
 import type { Metadata } from "next";
 
-import { SectionPage } from "@/components/layout/section-page";
+import { TaskScreen } from "@/components/tasks/task-screen";
 
 export const metadata: Metadata = {
   title: "Готово",
 };
 
+export const instant = false;
+
 export default function CompletedPage() {
   return (
-    <SectionPage
+    <TaskScreen
+      view="completed"
       title="Готово"
-      description="Здесь будет история выполненных задач с фильтрами по сфере, проекту и дате."
+      description="Выполненные задачи. Возврат делает задачу активной и не добавляет её в «Сегодня»."
     />
   );
 }

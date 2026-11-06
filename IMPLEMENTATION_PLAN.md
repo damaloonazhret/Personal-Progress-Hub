@@ -12,7 +12,7 @@
 ## Дальше
 
 - [x] Phase 3 — Authentication. Email и пароль, сессия, защита маршрутов, подтверждение почты.
-- [ ] Phase 4 — Core tasks. CRUD, выполнение, Inbox и Today.
+- [x] Phase 4 — Core tasks. CRUD, выполнение, Inbox, Today и сводка на обзоре.
 - [ ] Phase 5 — Projects и Areas, группировка, прогресс, фильтры.
 - [ ] Phase 6 — Dashboard.
 - [ ] Phase 7 — PWA: manifest, service worker, offline shell.

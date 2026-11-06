@@ -1,16 +1,19 @@
 import type { Metadata } from "next";
 
-import { SectionPage } from "@/components/layout/section-page";
+import { TaskScreen } from "@/components/tasks/task-screen";
 
 export const metadata: Metadata = {
   title: "Входящие",
 };
 
+export const instant = false;
+
 export default function InboxPage() {
   return (
-    <SectionPage
+    <TaskScreen
+      view="inbox"
       title="Входящие"
-      description="Здесь будут задачи, которые ещё не разложены по проектам и не взяты на сегодня."
+      description="Активные задачи без проекта, которые ещё не взяты на сегодня."
     />
   );
 }

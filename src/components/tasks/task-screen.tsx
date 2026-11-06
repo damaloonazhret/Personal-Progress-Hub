@@ -1,0 +1,33 @@
+import { connection } from "next/server";
+import { Suspense } from "react";
+
+import { SectionPage } from "@/components/layout/section-page";
+import { TaskBoard } from "@/components/tasks/task-board";
+import { getCompletedTasks, getInboxTasks, getTodayTasks } from "@/lib/tasks/queries";
+import type { TTaskView } from "@/lib/tasks/model";
+
+type TProps = {
+  view: TTaskView;
+  title: string;
+  description: string;
+};
+
+async function TaskScreenContent({ view }: Pick<TProps, "view">) {
+  await connection();
+  const now = new Date();
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  const result =
+    view === "today" ? await getTodayTasks() : view === "completed" ? await getCompletedTasks() : await getInboxTasks();
+
+  return <TaskBoard tasks={result.tasks} view={view} today={today} loadError={result.error} />;
+}
+
+export function TaskScreen({ view, title, description }: TProps) {
+  return (
+    <SectionPage title={title} description={description}>
+      <Suspense fallback={<p className="text-sm text-muted-foreground">Загрузка задач…</p>}>
+        <TaskScreenContent view={view} />
+      </Suspense>
+    </SectionPage>
+  );
+}
