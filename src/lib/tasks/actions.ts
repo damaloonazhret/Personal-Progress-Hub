@@ -1,19 +1,19 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
-
 import { requireUser } from "@/lib/auth/session";
+import { revalidateWork } from "@/lib/app/revalidate";
 import {
   createTaskSchema,
   editTaskSchema,
   emptyToNull,
   moveTaskInList,
+  placeTaskSchema,
   taskIdSchema,
   zodMessage,
   type TTaskDirection,
-  type TTaskPlace,
+  type TTaskScope,
 } from "@/lib/tasks/model";
-import { getInboxTasks, getTodayTasks } from "@/lib/tasks/queries";
+import { getAreaTasks, getInboxTasks, getProjectTasks, getTodayTasks } from "@/lib/tasks/queries";
 
 export type TTaskActionState = {
   error: string | null;
@@ -30,44 +30,78 @@ function failed(message = saveError): TTaskActionState {
 }
 
 function revalidateTasks() {
-  revalidatePath("/dashboard");
-  revalidatePath("/inbox");
-  revalidatePath("/today");
-  revalidatePath("/completed");
+  revalidateWork();
 }
 
-async function nextPosition(userId: string, place: TTaskPlace) {
+async function nextTodayPosition(userId: string) {
   const { supabase } = await requireUser();
-
-  if (place === "today") {
-    const { data } = await supabase
-      .from("tasks")
-      .select("today_position")
-      .eq("user_id", userId)
-      .eq("status", "todo")
-      .eq("in_today", true)
-      .order("today_position", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    return (data?.today_position ?? -1) + 1;
-  }
-
   const { data } = await supabase
     .from("tasks")
-    .select("position")
+    .select("today_position")
     .eq("user_id", userId)
     .eq("status", "todo")
-    .is("project_id", null)
-    .eq("in_today", false)
-    .order("position", { ascending: false })
+    .eq("in_today", true)
+    .order("today_position", { ascending: false })
     .limit(1)
     .maybeSingle();
+
+  return (data?.today_position ?? -1) + 1;
+}
+
+async function nextListPosition(userId: string, placement: { projectId: string | null; areaId: string | null }) {
+  const { supabase } = await requireUser();
+  const query = supabase.from("tasks").select("position").eq("user_id", userId).order("position", { ascending: false }).limit(1);
+  const scoped = placement.projectId
+    ? query.eq("project_id", placement.projectId)
+    : placement.areaId
+      ? query.is("project_id", null).eq("area_id", placement.areaId)
+      : query.is("project_id", null).is("area_id", null);
+  const { data } = await scoped.maybeSingle();
 
   return (data?.position ?? -1) + 1;
 }
 
-export async function createTask(input: { title: string; place: TTaskPlace }): Promise<TTaskActionState> {
+async function resolvePlacement(userId: string, projectId: string | null, areaId: string | null) {
+  const { supabase } = await requireUser();
+
+  if (projectId) {
+    const { data } = await supabase
+      .from("projects")
+      .select("id, area_id")
+      .eq("id", projectId)
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (!data) {
+      return null;
+    }
+
+    if (areaId && areaId !== data.area_id) {
+      return null;
+    }
+
+    return { projectId: data.id, areaId: data.area_id };
+  }
+
+  if (areaId) {
+    const { data } = await supabase.from("areas").select("id").eq("id", areaId).eq("user_id", userId).maybeSingle();
+
+    if (!data) {
+      return null;
+    }
+
+    return { projectId: null, areaId: data.id };
+  }
+
+  return { projectId: null, areaId: null };
+}
+
+export async function createTask(input: {
+  title: string;
+  place: "inbox" | "today";
+  projectId?: string | null;
+  areaId?: string | null;
+}): Promise<TTaskActionState> {
   const parsed = createTaskSchema.safeParse(input);
 
   if (!parsed.success) {
@@ -75,8 +109,14 @@ export async function createTask(input: { title: string; place: TTaskPlace }): P
   }
 
   const { supabase, userId } = await requireUser();
-  const position = await nextPosition(userId, "inbox");
-  const todayPosition = parsed.data.place === "today" ? await nextPosition(userId, "today") : null;
+  const placement = await resolvePlacement(userId, parsed.data.projectId ?? null, parsed.data.areaId ?? null);
+
+  if (!placement) {
+    return failed();
+  }
+
+  const position = await nextListPosition(userId, placement);
+  const todayPosition = parsed.data.place === "today" ? await nextTodayPosition(userId) : null;
   const { error } = await supabase.from("tasks").insert({
     user_id: userId,
     title: parsed.data.title,
@@ -87,8 +127,8 @@ export async function createTask(input: { title: string; place: TTaskPlace }): P
     in_today: parsed.data.place === "today",
     today_position: todayPosition,
     position,
-    project_id: null,
-    area_id: null,
+    project_id: placement.projectId,
+    area_id: placement.areaId,
   });
 
   if (error) {
@@ -173,7 +213,7 @@ export async function addTaskToToday(id: string) {
   }
 
   const { supabase, userId } = await requireUser();
-  const todayPosition = await nextPosition(userId, "today");
+  const todayPosition = await nextTodayPosition(userId);
   const { data, error } = await supabase
     .from("tasks")
     .update({ in_today: true, today_position: todayPosition })
@@ -237,12 +277,63 @@ export async function deleteTask(id: string) {
   return ok();
 }
 
-async function loadOrderedTasks(place: TTaskPlace) {
-  const result = place === "today" ? await getTodayTasks() : await getInboxTasks();
-  return result;
+export async function placeTask(input: {
+  id: string;
+  projectId: string | null;
+  areaId: string | null;
+}): Promise<TTaskActionState> {
+  const parsed = placeTaskSchema.safeParse(input);
+
+  if (!parsed.success) {
+    return failed(zodMessage(parsed.error));
+  }
+
+  const { supabase, userId } = await requireUser();
+  const placement = await resolvePlacement(userId, parsed.data.projectId, parsed.data.areaId);
+
+  if (!placement) {
+    return failed();
+  }
+
+  const position = await nextListPosition(userId, placement);
+  const { data, error } = await supabase
+    .from("tasks")
+    .update({
+      project_id: placement.projectId,
+      area_id: placement.areaId,
+      position,
+    })
+    .eq("id", parsed.data.id)
+    .eq("user_id", userId)
+    .select("id");
+
+  if (error || !data?.length) {
+    return failed();
+  }
+
+  revalidateTasks();
+  return ok();
 }
 
-export async function moveTask(id: string, direction: TTaskDirection, place: TTaskPlace) {
+async function loadOrderedTasks(scope: TTaskScope) {
+  if (scope.view === "today") {
+    return getTodayTasks();
+  }
+
+  if (scope.view === "project" && scope.projectId) {
+    const result = await getProjectTasks(scope.projectId);
+    return { ...result, tasks: result.tasks.filter((task) => task.status === "todo") };
+  }
+
+  if (scope.view === "area" && scope.areaId) {
+    const result = await getAreaTasks(scope.areaId);
+    return { ...result, tasks: result.tasks.filter((task) => task.status === "todo") };
+  }
+
+  return getInboxTasks();
+}
+
+export async function moveTask(id: string, direction: TTaskDirection, scope: TTaskScope) {
   const parsed = taskIdSchema.safeParse(id);
 
   if (!parsed.success || (direction !== "up" && direction !== "down")) {
@@ -250,14 +341,18 @@ export async function moveTask(id: string, direction: TTaskDirection, place: TTa
   }
 
   const { supabase, userId } = await requireUser();
-  const loaded = await loadOrderedTasks(place);
+  if (scope.view === "completed") {
+    return failed();
+  }
+
+  const loaded = await loadOrderedTasks(scope);
 
   if (loaded.error) {
     return failed("Не удалось изменить порядок.");
   }
 
   const current = loaded.tasks;
-  const next = moveTaskInList(current, parsed.data, direction, place);
+  const next = moveTaskInList(current, parsed.data, direction, scope.view);
   const currentById = new Map(current.map((task) => [task.id, task]));
 
   for (const task of next) {
@@ -267,7 +362,7 @@ export async function moveTask(id: string, direction: TTaskDirection, place: TTa
       continue;
     }
 
-    if (place === "today") {
+    if (scope.view === "today") {
       const todayPosition = task.todayPosition ?? 0;
 
       if (previous.todayPosition === todayPosition) {

@@ -4,9 +4,15 @@ export const taskPriorities = ["low", "medium", "high"] as const;
 
 export type TTaskPriority = (typeof taskPriorities)[number];
 export type TTaskStatus = "todo" | "done";
-export type TTaskView = "inbox" | "today" | "completed";
+export type TTaskView = "inbox" | "today" | "completed" | "project" | "area";
 export type TTaskPlace = "inbox" | "today";
 export type TTaskDirection = "up" | "down";
+
+export type TTaskScope = {
+  view: TTaskView;
+  projectId?: string;
+  areaId?: string;
+};
 
 export type TTask = {
   id: string;
@@ -20,6 +26,7 @@ export type TTask = {
   todayPosition: number | null;
   completedAt: string | null;
   projectId: string | null;
+  areaId: string | null;
   createdAt: string;
 };
 
@@ -55,6 +62,14 @@ const dueDateSchema = z
 export const createTaskSchema = z.object({
   title: z.string().trim().min(1, "Введите название.").max(200, "Название не длиннее 200 символов."),
   place: z.enum(["inbox", "today"]),
+  projectId: z.string().uuid().nullable().optional(),
+  areaId: z.string().uuid().nullable().optional(),
+});
+
+export const placeTaskSchema = z.object({
+  id: z.string().uuid(),
+  projectId: z.string().uuid().nullable(),
+  areaId: z.string().uuid().nullable(),
 });
 
 export const editTaskSchema = z.object({
@@ -73,12 +88,32 @@ export const priorityLabels: Record<TTaskPriority, string> = {
   high: "Высокий",
 };
 
-export function isInboxTask(task: Pick<TTask, "status" | "projectId" | "inToday">) {
-  return task.status === "todo" && task.projectId === null && !task.inToday;
+export function isInboxTask(task: Pick<TTask, "status" | "projectId" | "areaId" | "inToday">) {
+  return task.status === "todo" && task.projectId === null && task.areaId === null && !task.inToday;
 }
 
 export function isTodayTask(task: Pick<TTask, "status" | "inToday">) {
   return task.status === "todo" && task.inToday;
+}
+
+export function belongsToScope(task: TTask, scope: TTaskScope) {
+  if (scope.view === "project") {
+    return task.status === "todo" && task.projectId === scope.projectId;
+  }
+
+  if (scope.view === "area") {
+    return task.status === "todo" && task.areaId === scope.areaId && task.projectId === null;
+  }
+
+  if (scope.view === "completed" && scope.projectId) {
+    return task.status === "done" && task.projectId === scope.projectId;
+  }
+
+  if (scope.view === "completed" && scope.areaId) {
+    return task.status === "done" && task.areaId === scope.areaId;
+  }
+
+  return belongsToView(task, scope.view);
 }
 
 export function belongsToView(task: TTask, view: TTaskView) {
@@ -88,6 +123,10 @@ export function belongsToView(task: TTask, view: TTaskView) {
 
   if (view === "today") {
     return isTodayTask(task);
+  }
+
+  if (view === "project" || view === "area") {
+    return task.status === "todo";
   }
 
   return task.status === "done";
@@ -108,7 +147,7 @@ export function compareTasks(view: TTaskView) {
   };
 }
 
-export function moveTaskInList(tasks: TTask[], id: string, direction: TTaskDirection, view: TTaskPlace) {
+export function moveTaskInList(tasks: TTask[], id: string, direction: TTaskDirection, view: Exclude<TTaskView, "completed">) {
   const ordered = [...tasks].sort(compareTasks(view));
   const index = ordered.findIndex((task) => task.id === id);
   const targetIndex = direction === "up" ? index - 1 : index + 1;
@@ -130,26 +169,26 @@ export function moveTaskInList(tasks: TTask[], id: string, direction: TTaskDirec
   });
 }
 
-export function applyTaskUpdate(tasks: TTask[], update: TOptimisticUpdate, view: TTaskView) {
+export function applyTaskUpdate(tasks: TTask[], update: TOptimisticUpdate, scope: TTaskScope) {
   if (update.type === "remove") {
     return tasks.filter((task) => task.id !== update.id);
   }
 
   if (update.type === "move") {
-    if (view === "completed") {
+    if (scope.view === "completed") {
       return tasks;
     }
 
-    return moveTaskInList(tasks, update.id, update.direction, view);
+    return moveTaskInList(tasks, update.id, update.direction, scope.view);
   }
 
   if (update.type === "add") {
-    const next = belongsToView(update.task, view) ? [...tasks, update.task] : tasks;
-    return next.sort(compareTasks(view));
+    const next = belongsToScope(update.task, scope) ? [...tasks, update.task] : tasks;
+    return next.sort(compareTasks(scope.view));
   }
 
   const patched = tasks.map((task) => (task.id === update.id ? { ...task, ...update.patch } : task));
-  return patched.filter((task) => belongsToView(task, view)).sort(compareTasks(view));
+  return patched.filter((task) => belongsToScope(task, scope)).sort(compareTasks(scope.view));
 }
 
 export function formatTaskCount(count: number) {

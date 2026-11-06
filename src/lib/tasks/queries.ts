@@ -7,7 +7,7 @@ import {
 } from "@/lib/tasks/model";
 
 const taskColumns =
-  "id, title, description, status, priority, due_date, in_today, position, today_position, completed_at, project_id, created_at";
+  "id, title, description, status, priority, due_date, in_today, position, today_position, completed_at, project_id, area_id, created_at";
 
 type TTaskRow = {
   id: string;
@@ -21,6 +21,7 @@ type TTaskRow = {
   today_position: number | null;
   completed_at: string | null;
   project_id: string | null;
+  area_id: string | null;
   created_at: string;
 };
 
@@ -62,6 +63,7 @@ function mapTask(row: TTaskRow): TTask {
     todayPosition: row.today_position,
     completedAt: row.completed_at,
     projectId: row.project_id,
+    areaId: row.area_id,
     createdAt: row.created_at,
   };
 }
@@ -74,6 +76,7 @@ export async function getInboxTasks(): Promise<TTaskListResult> {
     .eq("user_id", userId)
     .eq("status", "todo")
     .is("project_id", null)
+    .is("area_id", null)
     .eq("in_today", false)
     .order("position", { ascending: true })
     .order("created_at", { ascending: true });
@@ -117,6 +120,58 @@ export async function getCompletedTasks(): Promise<TTaskListResult> {
   }
 
   return { tasks: data.map(mapTask).sort(compareTasks("completed")), error: null };
+}
+
+export async function getProjectTasks(projectId: string): Promise<TTaskListResult> {
+  const { supabase, userId } = await requireUser();
+  const { data, error } = await supabase
+    .from("tasks")
+    .select(taskColumns)
+    .eq("user_id", userId)
+    .eq("project_id", projectId)
+    .order("position", { ascending: true })
+    .order("created_at", { ascending: true });
+
+  if (error || !data) {
+    return { tasks: [], error: loadError };
+  }
+
+  return { tasks: data.map(mapTask), error: null };
+}
+
+export async function getTasksInArea(areaId: string): Promise<TTaskListResult> {
+  const { supabase, userId } = await requireUser();
+  const { data, error } = await supabase
+    .from("tasks")
+    .select(taskColumns)
+    .eq("user_id", userId)
+    .eq("area_id", areaId)
+    .order("position", { ascending: true })
+    .order("created_at", { ascending: true });
+
+  if (error || !data) {
+    return { tasks: [], error: loadError };
+  }
+
+  return { tasks: data.map(mapTask), error: null };
+}
+
+export async function getAreaTasks(areaId: string): Promise<TTaskListResult> {
+  const { supabase, userId } = await requireUser();
+  const { data, error } = await supabase
+    .from("tasks")
+    .select(taskColumns)
+    .eq("user_id", userId)
+    .eq("area_id", areaId)
+    .is("project_id", null)
+    .order("position", { ascending: true })
+    .order("created_at", { ascending: true });
+
+  if (error || !data) {
+    return { tasks: [], error: loadError };
+  }
+
+  return { tasks: data.map(mapTask), error: null };
 }
 
 export async function getTaskSummary(): Promise<{ counts: TTaskSummary; error: string | null }> {

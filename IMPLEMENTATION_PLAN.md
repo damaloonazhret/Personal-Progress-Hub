@@ -13,7 +13,7 @@
 
 ## Дальше
 
-- [ ] Phase 5 — Projects и Areas, группировка, прогресс, фильтры.
+- [x] Phase 5 — Projects и Areas, группировка, прогресс, фильтры.
 - [ ] Phase 6 — Planning: шаблоны, повторяющиеся задачи и календарь по датам. Три блока ниже, по порядку.
 - [ ] Phase 7 — Dashboard improvements. Расширить обзор, не подменяя его календарём.
 - [ ] Phase 8 — PWA: manifest, service worker, offline shell.

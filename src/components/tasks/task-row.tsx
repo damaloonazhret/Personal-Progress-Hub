@@ -4,6 +4,7 @@ import { useState, type ChangeEvent } from "react";
 
 import { taskFieldClassName } from "@/components/tasks/task-field";
 import { Button } from "@/components/ui/button";
+import type { TCatalog } from "@/lib/organization/queries";
 import {
   editTaskSchema,
   formatCompletedAt,
@@ -38,6 +39,8 @@ type TProps = {
   onDelete: (id: string) => void;
   onMove: (id: string, direction: "up" | "down") => void;
   onSave: (input: TEditInput) => Promise<{ error: string | null }>;
+  catalog?: TCatalog;
+  onPlace?: (id: string, placement: { projectId: string | null; areaId: string | null }) => void;
 };
 
 export function TaskRow({
@@ -53,6 +56,8 @@ export function TaskRow({
   onDelete,
   onMove,
   onSave,
+  catalog,
+  onPlace,
 }: TProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
@@ -67,6 +72,15 @@ export function TaskRow({
   const isMoveDownDisabled = isLast;
   const showDueDate = Boolean(task.dueDate);
   const dueDateIsPast = Boolean(task.dueDate) && isPastDueDate(task.dueDate ?? "", today);
+  const projectName = catalog?.projects.find((project) => project.id === task.projectId)?.name ?? null;
+  const areaName = catalog?.areas.find((area) => area.id === task.areaId)?.name ?? null;
+  const showPlacement = Boolean(onPlace && catalog);
+  const placementValue = task.projectId ? `project:${task.projectId}` : task.areaId ? `area:${task.areaId}` : "inbox";
+  const showAddToToday = view !== "completed" && view !== "today" && !task.inToday;
+  const showRemoveFromToday = view !== "completed" && task.inToday;
+  const hasAreas = Boolean(catalog && catalog.areas.length > 0);
+  const hasProjects = Boolean(catalog && catalog.projects.length > 0);
+  const locationLabel = projectName ? `Проект: ${projectName}` : areaName ? `Сфера: ${areaName}` : null;
 
   const handleComplete = () => {
     onComplete(task.id);
@@ -82,6 +96,30 @@ export function TaskRow({
 
   const handleRemoveFromToday = () => {
     onRemoveFromToday(task.id);
+  };
+
+  const handlePlacementChange = (event: ChangeEvent<HTMLSelectElement>) => {
+    const value = event.target.value;
+
+    if (!onPlace) {
+      return;
+    }
+
+    if (value === "inbox") {
+      onPlace(task.id, { projectId: null, areaId: null });
+      return;
+    }
+
+    if (value.startsWith("project:")) {
+      const projectId = value.slice("project:".length);
+      const project = catalog?.projects.find((item) => item.id === projectId);
+      onPlace(task.id, { projectId, areaId: project?.areaId ?? null });
+      return;
+    }
+
+    if (value.startsWith("area:")) {
+      onPlace(task.id, { projectId: null, areaId: value.slice("area:".length) });
+    }
   };
 
   const handleMoveUp = () => {
@@ -235,6 +273,7 @@ export function TaskRow({
           {task.description ? (
             <p className="text-sm leading-6 whitespace-pre-wrap text-muted-foreground">{task.description}</p>
           ) : null}
+          {locationLabel ? <p className="text-sm text-muted-foreground">{locationLabel}</p> : null}
           {showDueDate && task.dueDate ? (
             <p className="text-sm text-muted-foreground">
               Срок: {formatDueDate(task.dueDate)}
@@ -280,12 +319,12 @@ export function TaskRow({
               Готово
             </Button>
           )}
-          {view === "inbox" ? (
+          {showAddToToday ? (
             <Button type="button" variant="outline" onClick={handleAddToToday}>
               На сегодня
             </Button>
           ) : null}
-          {view === "today" ? (
+          {showRemoveFromToday ? (
             <Button type="button" variant="outline" onClick={handleRemoveFromToday}>
               Убрать из сегодня
             </Button>
@@ -307,6 +346,37 @@ export function TaskRow({
             Удалить
           </Button>
         </div>
+      ) : null}
+      {showPlacement && !isEditing && !isConfirmingDelete ? (
+        <label className="flex flex-col gap-1.5 text-sm font-medium">
+          Раздел
+          <select value={placementValue} onChange={handlePlacementChange} className={`${taskFieldClassName} h-10`}>
+            <option value="inbox">Входящие</option>
+            {hasAreas && catalog ? (
+              <optgroup label="Сферы">
+                {catalog.areas.map((area) => (
+                  <option key={area.id} value={`area:${area.id}`}>
+                    {area.name}
+                  </option>
+                ))}
+              </optgroup>
+            ) : null}
+            {hasProjects && catalog ? (
+              <optgroup label="Проекты">
+                {catalog.projects.map((project) => {
+                  const projectArea = catalog.areas.find((area) => area.id === project.areaId);
+                  const projectLabel = projectArea ? `${projectArea.name} · ${project.name}` : project.name;
+
+                  return (
+                    <option key={project.id} value={`project:${project.id}`}>
+                      {projectLabel}
+                    </option>
+                  );
+                })}
+              </optgroup>
+            ) : null}
+          </select>
+        </label>
       ) : null}
     </li>
   );
