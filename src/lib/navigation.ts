@@ -1,4 +1,5 @@
 import {
+  CalendarDays,
   CheckCircle2,
   FolderKanban,
   Inbox,
@@ -21,6 +22,7 @@ export const primaryNavItems: TNavItem[] = [
   { href: "/dashboard", label: "Обзор", icon: LayoutDashboard },
   { href: "/inbox", label: "Входящие", icon: Inbox },
   { href: "/today", label: "Сегодня", icon: ListChecks },
+  { href: "/calendar", label: "Календарь", icon: CalendarDays },
   { href: "/projects", label: "Проекты", icon: FolderKanban },
   { href: "/areas", label: "Сферы", icon: Layers },
   { href: "/templates", label: "Шаблоны", icon: Files },

@@ -30,7 +30,7 @@ export function NavLink({ item, variant }: TProps) {
       )}
     >
       <Icon aria-hidden="true" />
-      <span className={cn(variant === "bottom" && "truncate")}>{item.label}</span>
+      <span className={cn(variant === "bottom" && "block w-full truncate text-center")}>{item.label}</span>
     </Link>
   );
 }

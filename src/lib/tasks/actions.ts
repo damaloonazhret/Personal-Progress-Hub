@@ -9,12 +9,13 @@ import {
   emptyToNull,
   moveTaskInList,
   placeTaskSchema,
+  scheduleTaskSchema,
   taskIdSchema,
   zodMessage,
   type TTaskDirection,
   type TTaskScope,
 } from "@/lib/tasks/model";
-import { getAreaTasks, getInboxTasks, getProjectTasks, getTodayTasks } from "@/lib/tasks/queries";
+import { getAreaTasks, getInboxTasks, getProjectTasks, getScheduledTasks, getTodayTasks } from "@/lib/tasks/queries";
 
 export type TTaskActionState = {
   error: string | null;
@@ -102,6 +103,7 @@ export async function createTask(input: {
   place: "inbox" | "today";
   projectId?: string | null;
   areaId?: string | null;
+  scheduledDate?: string;
 }): Promise<TTaskActionState> {
   const parsed = createTaskSchema.safeParse(input);
 
@@ -117,7 +119,8 @@ export async function createTask(input: {
   }
 
   const position = await nextListPosition(userId, placement);
-  const scheduledDate = parsed.data.place === "today" ? await getLocalToday() : null;
+  const requestedDate = parsed.data.scheduledDate && parsed.data.scheduledDate.length > 0 ? parsed.data.scheduledDate : null;
+  const scheduledDate = requestedDate ?? (parsed.data.place === "today" ? await getLocalToday() : null);
   const dayPosition = scheduledDate ? await nextDayPosition(userId, scheduledDate, "medium") : null;
   const { error } = await supabase.from("tasks").insert({
     user_id: userId,
@@ -315,6 +318,106 @@ export async function removeTaskFromToday(id: string) {
 
   if (error || !data?.length) {
     return failed();
+  }
+
+  revalidateTasks();
+  return ok();
+}
+
+export async function scheduleTask(input: { id: string; scheduledDate: string }): Promise<TTaskActionState> {
+  const parsed = scheduleTaskSchema.safeParse(input);
+
+  if (!parsed.success) {
+    return failed(zodMessage(parsed.error));
+  }
+
+  const { supabase, userId } = await requireUser();
+  const scheduledDate = emptyToNull(parsed.data.scheduledDate);
+
+  if (!scheduledDate) {
+    const { data, error } = await supabase
+      .from("tasks")
+      .update({ scheduled_date: null, day_position: null })
+      .eq("id", parsed.data.id)
+      .eq("user_id", userId)
+      .select("id");
+
+    if (error || !data?.length) {
+      return failed();
+    }
+
+    revalidateTasks();
+    return ok();
+  }
+
+  const { data: task, error: taskError } = await supabase
+    .from("tasks")
+    .select("priority, scheduled_date")
+    .eq("id", parsed.data.id)
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (taskError || !task) {
+    return failed();
+  }
+
+  if (task.scheduled_date === scheduledDate) {
+    return ok();
+  }
+
+  const dayPosition = await nextDayPosition(userId, scheduledDate, task.priority);
+  const { data, error } = await supabase
+    .from("tasks")
+    .update({ scheduled_date: scheduledDate, day_position: dayPosition })
+    .eq("id", parsed.data.id)
+    .eq("user_id", userId)
+    .select("id");
+
+  if (error || !data?.length) {
+    return failed();
+  }
+
+  revalidateTasks();
+  return ok();
+}
+
+export async function moveDayTask(id: string, direction: TTaskDirection, scheduledDate: string) {
+  const parsed = taskIdSchema.safeParse(id);
+  const dateIsValid = scheduleTaskSchema.safeParse({ id, scheduledDate }).success && scheduledDate.length > 0;
+
+  if (!parsed.success || !dateIsValid || (direction !== "up" && direction !== "down")) {
+    return failed();
+  }
+
+  const { supabase, userId } = await requireUser();
+  const loaded = await getScheduledTasks(scheduledDate, scheduledDate);
+
+  if (loaded.error) {
+    return failed("Не удалось изменить порядок.");
+  }
+
+  const current = loaded.tasks;
+  const next = moveTaskInList(current, parsed.data, direction, "today");
+  const currentById = new Map(current.map((task) => [task.id, task]));
+
+  for (const task of next) {
+    const previous = currentById.get(task.id);
+    const dayPosition = task.dayPosition ?? 0;
+
+    if (!previous || previous.dayPosition === dayPosition) {
+      continue;
+    }
+
+    const { error } = await supabase
+      .from("tasks")
+      .update({ day_position: dayPosition })
+      .eq("id", task.id)
+      .eq("user_id", userId)
+      .eq("scheduled_date", scheduledDate);
+
+    if (error) {
+      return failed("Не удалось изменить порядок.");
+    }
   }
 
   revalidateTasks();

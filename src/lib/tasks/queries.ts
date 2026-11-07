@@ -1,6 +1,7 @@
 import { requireUser } from "@/lib/auth/session";
 import { getLocalToday } from "@/lib/profile/queries";
-import { generateRecurrenceThroughToday } from "@/lib/recurrence/generate";
+import { generateRecurrenceRange, generateRecurrenceThroughToday } from "@/lib/recurrence/generate";
+import { isRealIsoDate } from "@/lib/recurrence/schedule";
 import {
   compareTasks,
   type TTask,
@@ -113,6 +114,46 @@ export async function getTodayTasks(): Promise<TTaskListResult> {
   }
 
   return { tasks: data.map(mapTask).sort(compareTasks("today")), error: null };
+}
+
+export async function getScheduledTasks(fromDate: string, toDate: string): Promise<TTaskListResult> {
+  const rangeIsValid = isRealIsoDate(fromDate) && isRealIsoDate(toDate) && fromDate <= toDate;
+
+  if (!rangeIsValid) {
+    return { tasks: [], error: loadError };
+  }
+
+  const { supabase, userId } = await requireUser();
+  const { data, error } = await supabase
+    .from("tasks")
+    .select(taskColumns)
+    .eq("user_id", userId)
+    .gte("scheduled_date", fromDate)
+    .lte("scheduled_date", toDate)
+    .order("scheduled_date", { ascending: true })
+    .order("created_at", { ascending: true });
+
+  if (error || !data) {
+    return { tasks: [], error: loadError };
+  }
+
+  return { tasks: data.map(mapTask).sort(compareTasks("today")), error: null };
+}
+
+export async function getCalendarTasks(fromDate: string, toDate: string): Promise<TTaskListResult> {
+  const rangeIsValid = isRealIsoDate(fromDate) && isRealIsoDate(toDate) && fromDate <= toDate;
+
+  if (!rangeIsValid) {
+    return { tasks: [], error: loadError };
+  }
+
+  const generated = await generateRecurrenceRange(fromDate, toDate);
+
+  if (generated.error) {
+    return { tasks: [], error: generated.error };
+  }
+
+  return getScheduledTasks(fromDate, toDate);
 }
 
 export async function getCompletedTasks(): Promise<TTaskListResult> {

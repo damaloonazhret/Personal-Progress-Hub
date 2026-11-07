@@ -11,4 +11,5 @@ export function revalidateWork() {
   revalidatePath("/areas/[id]", "page");
   revalidatePath("/templates");
   revalidatePath("/recurrence");
+  revalidatePath("/calendar");
 }

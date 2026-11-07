@@ -70,6 +70,7 @@ export const createTaskSchema = z.object({
   place: z.enum(["inbox", "today"]),
   projectId: z.string().uuid().nullable().optional(),
   areaId: z.string().uuid().nullable().optional(),
+  scheduledDate: dueDateSchema.optional(),
 });
 
 export const placeTaskSchema = z.object({
@@ -87,6 +88,11 @@ export const editTaskSchema = z.object({
 });
 
 export const taskIdSchema = z.string().uuid();
+
+export const scheduleTaskSchema = z.object({
+  id: z.string().uuid(),
+  scheduledDate: dueDateSchema,
+});
 
 export const priorityLabels: Record<TTaskPriority, string> = {
   low: "Низкий",

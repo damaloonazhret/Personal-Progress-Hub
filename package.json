@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
-    "test": "node --test src/lib/recurrence/schedule.test.ts"
+    "test": "node --test src/lib/recurrence/schedule.test.ts src/lib/calendar/month.test.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",
