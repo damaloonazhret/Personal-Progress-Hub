@@ -27,6 +27,8 @@ export type TTask = {
   completedAt: string | null;
   projectId: string | null;
   areaId: string | null;
+  recurrenceRuleId: string | null;
+  recurrenceOccurrenceDate: string | null;
   createdAt: string;
 };
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useOptimistic, useState, useTransition, type ChangeEvent, type FormEvent } from "react";
+import { useEffect, useOptimistic, useState, useTransition, type ChangeEvent, type FormEvent } from "react";
 
 import { taskFieldClassName } from "@/components/tasks/task-field";
 import { Button } from "@/components/ui/button";
@@ -32,6 +32,7 @@ type TProps = {
   projects: TCatalogProject[];
   today: string;
   loadError: string | null;
+  focusRuleId: string | null;
 };
 
 type TDraft = {
@@ -165,7 +166,7 @@ function describeRule(rule: TRecurrenceRule) {
   return `${cadence}: ${days}`;
 }
 
-export function RecurrenceList({ rules, areas, projects, today, loadError }: TProps) {
+export function RecurrenceList({ rules, areas, projects, today, loadError, focusRuleId }: TProps) {
   const [optimisticRules, applyOptimistic] = useOptimistic(rules, applyRuleUpdate);
   const [draft, setDraft] = useState<TDraft>({ ...emptyDraft, startDate: today });
   const [error, setError] = useState<string | null>(null);
@@ -327,7 +328,7 @@ export function RecurrenceList({ rules, areas, projects, today, loadError }: TPr
       <form onSubmit={handleSubmit} className="flex flex-col gap-3 rounded-xl border border-border p-3">
         <p className="text-sm font-medium">Новое правило</p>
         <RuleFields draft={draft} areas={areas} projects={projects} onChange={handleChange} />
-        <p className="text-sm text-muted-foreground">Пропущенные даты до местной сегодняшней даты создают «Сегодня» и «Обзор», будущие — календарь. Правка не меняет уже созданные задачи.</p>
+        <p className="text-sm text-muted-foreground">Пропущенные даты до местной сегодняшней даты создают «Сегодня» и «Обзор», будущие — календарь. Правка обновляет задачи этой серии.</p>
         <Button type="submit" disabled={isPending} className="w-full sm:w-auto">
           {isPending ? "Добавление…" : "Добавить"}
         </Button>
@@ -363,6 +364,7 @@ export function RecurrenceList({ rules, areas, projects, today, loadError }: TPr
               onCancel={handleCancel}
               onDelete={handleDelete}
               onSkip={handleSkip}
+              startsOpen={focusRuleId === rule.id}
             />
           ))}
         </ul>
@@ -440,6 +442,9 @@ function RuleFields({ draft, areas, projects, onChange }: TFieldsProps) {
               );
             })}
           </div>
+          <p className="text-sm text-muted-foreground">
+            Недели отсчитываются от недели даты начала. В выбранные дни активных недель создаются задачи.
+          </p>
         </fieldset>
       ) : null}
       <div className="grid gap-3 sm:grid-cols-2">
@@ -492,10 +497,11 @@ type TCardProps = {
   onCancel: (id: string) => void;
   onDelete: (id: string) => void;
   onSkip: (id: string, occurrenceDate: string) => Promise<{ error: string | null }>;
+  startsOpen: boolean;
 };
 
-function RuleCard({ rule, areas, projects, today, isSaved, onSave, onPause, onResume, onCancel, onDelete, onSkip }: TCardProps) {
-  const [isEditing, setIsEditing] = useState(false);
+function RuleCard({ rule, areas, projects, today, isSaved, onSave, onPause, onResume, onCancel, onDelete, onSkip, startsOpen }: TCardProps) {
+  const [isEditing, setIsEditing] = useState(startsOpen);
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [skipDate, setSkipDate] = useState(today);
@@ -509,6 +515,14 @@ function RuleCard({ rule, areas, projects, today, isSaved, onSave, onPause, onRe
   const canCancel = isSaved && rule.status !== "cancelled";
   const canSkip = isSaved && rule.status !== "cancelled";
   const locationLabel = projectName ? `Проект: ${projectName}` : areaName ? `Сфера: ${areaName}` : "Без раздела";
+
+  useEffect(() => {
+    if (!startsOpen) {
+      return;
+    }
+
+    document.getElementById(`rule-${rule.id}`)?.scrollIntoView({ block: "nearest" });
+  }, [startsOpen, rule.id]);
 
   const handleChange = (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     setDraft((current) => readDraft(event, current, projects));
@@ -578,7 +592,7 @@ function RuleCard({ rule, areas, projects, today, isSaved, onSave, onPause, onRe
   };
 
   return (
-    <li className="flex flex-col gap-3 rounded-xl border border-border bg-card p-3">
+    <li id={`rule-${rule.id}`} className="flex flex-col gap-3 rounded-xl border border-border bg-card p-3">
       {isEditing ? (
         <form onSubmit={handleSave} className="flex flex-col gap-3">
           <RuleFields draft={draft} areas={areas} projects={projects} onChange={handleChange} />
@@ -601,6 +615,11 @@ function RuleCard({ rule, areas, projects, today, isSaved, onSave, onPause, onRe
             </div>
             {rule.description ? <p className="text-sm text-muted-foreground">{rule.description}</p> : null}
             <p className="text-sm text-muted-foreground">{describeRule(rule)}</p>
+            {rule.unit === "week" ? (
+              <p className="text-sm text-muted-foreground">
+                Недели отсчитываются от недели даты начала. В выбранные дни активных недель создаются задачи.
+              </p>
+            ) : null}
             <p className="text-sm text-muted-foreground">
               С {formatDueDate(rule.startDate)}
               {rule.endDate ? `, до ${formatDueDate(rule.endDate)}` : ""}
@@ -634,6 +653,7 @@ function RuleCard({ rule, areas, projects, today, isSaved, onSave, onPause, onRe
             ) : null}
             {isConfirmingDelete ? (
               <>
+                <p className="w-full text-sm text-muted-foreground">Удалятся правило и все задачи этой серии.</p>
                 <Button type="button" variant="destructive" onClick={handleDelete} disabled={!isSaved}>
                   Удалить навсегда
                 </Button>

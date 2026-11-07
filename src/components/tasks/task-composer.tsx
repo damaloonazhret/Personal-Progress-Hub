@@ -47,6 +47,8 @@ export function TaskComposer({ place, today, projectId = null, areaId = null, on
       completedAt: null,
       projectId,
       areaId,
+      recurrenceRuleId: null,
+      recurrenceOccurrenceDate: null,
       createdAt: new Date().toISOString(),
     };
 

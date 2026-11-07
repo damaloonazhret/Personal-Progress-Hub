@@ -10,7 +10,7 @@ import {
 } from "@/lib/tasks/model";
 
 const taskColumns =
-  "id, title, description, status, priority, due_date, scheduled_date, position, day_position, completed_at, project_id, area_id, created_at";
+  "id, title, description, status, priority, due_date, scheduled_date, position, day_position, completed_at, project_id, area_id, recurrence_rule_id, recurrence_occurrence_date, created_at";
 
 type TTaskRow = {
   id: string;
@@ -25,6 +25,8 @@ type TTaskRow = {
   completed_at: string | null;
   project_id: string | null;
   area_id: string | null;
+  recurrence_rule_id: string | null;
+  recurrence_occurrence_date: string | null;
   created_at: string;
 };
 
@@ -67,6 +69,8 @@ function mapTask(row: TTaskRow): TTask {
     completedAt: row.completed_at,
     projectId: row.project_id,
     areaId: row.area_id,
+    recurrenceRuleId: row.recurrence_rule_id,
+    recurrenceOccurrenceDate: row.recurrence_occurrence_date,
     createdAt: row.created_at,
   };
 }

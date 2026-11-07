@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState, type ChangeEvent } from "react";
 
 import { taskFieldClassName } from "@/components/tasks/task-field";
@@ -34,6 +35,7 @@ type TProps = {
   onSave: (input: TEditInput) => Promise<{ error: string | null }>;
   onSchedule: (id: string, scheduledDate: string) => Promise<{ error: string | null }>;
   onClearDate: (id: string) => Promise<{ error: string | null }>;
+  onDelete: (id: string) => void;
 };
 
 export function CalendarDayTask({
@@ -47,8 +49,10 @@ export function CalendarDayTask({
   onSave,
   onSchedule,
   onClearDate,
+  onDelete,
 }: TProps) {
   const [isEditing, setIsEditing] = useState(false);
+  const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [title, setTitle] = useState(task.title);
@@ -63,6 +67,10 @@ export function CalendarDayTask({
   const statusLabel = isDone ? "Выполнена" : "Не выполнена";
   const isMoveUpButtonDisabled = isMoveUpDisabled || isSaving;
   const isMoveDownButtonDisabled = isMoveDownDisabled || isSaving;
+  const isSeriesTask = task.recurrenceRuleId !== null;
+  const isOccurrenceEditVisible = isEditing && !isSeriesTask;
+  const isDeleteConfirmVisible = isSeriesTask && isConfirmingDelete;
+  const isDeleteAskVisible = isSeriesTask && !isConfirmingDelete;
 
   const handleComplete = () => {
     onComplete(task.id);
@@ -185,9 +193,21 @@ export function CalendarDayTask({
     });
   };
 
+  const handleAskDelete = () => {
+    setIsConfirmingDelete(true);
+  };
+
+  const handleKeepOccurrence = () => {
+    setIsConfirmingDelete(false);
+  };
+
+  const handleDeleteOccurrence = () => {
+    onDelete(task.id);
+  };
+
   return (
     <li className={`flex flex-col gap-3 rounded-xl border border-border bg-card p-3 ${isDone ? "opacity-70" : ""}`}>
-      {isEditing ? (
+      {isOccurrenceEditVisible ? (
         <div className="flex flex-col gap-3">
           <label className="flex flex-col gap-1.5 text-sm font-medium">
             Название
@@ -256,28 +276,54 @@ export function CalendarDayTask({
                 Готово
               </Button>
             )}
-            <Button type="button" variant="outline" onClick={handleStartEdit} disabled={isSaving}>
-              Изменить
-            </Button>
+            {isSeriesTask ? (
+              <Button variant="outline" asChild>
+                <Link href={`/recurrence?rule=${task.recurrenceRuleId}`}>Правило повтора</Link>
+              </Button>
+            ) : (
+              <Button type="button" variant="outline" onClick={handleStartEdit} disabled={isSaving}>
+                Изменить
+              </Button>
+            )}
             <Button type="button" variant="outline" onClick={handleMoveUp} disabled={isMoveUpButtonDisabled}>
               Выше
             </Button>
             <Button type="button" variant="outline" onClick={handleMoveDown} disabled={isMoveDownButtonDisabled}>
               Ниже
             </Button>
+            {isDeleteConfirmVisible ? (
+              <Button type="button" variant="destructive" onClick={handleDeleteOccurrence} disabled={isSaving}>
+                Удалить вхождение
+              </Button>
+            ) : null}
+            {isDeleteConfirmVisible ? (
+              <Button type="button" variant="outline" onClick={handleKeepOccurrence} disabled={isSaving}>
+                Оставить
+              </Button>
+            ) : null}
+            {isDeleteAskVisible ? (
+              <Button type="button" variant="destructive" onClick={handleAskDelete} disabled={isSaving}>
+                Удалить вхождение
+              </Button>
+            ) : null}
           </div>
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
-            <label className="flex min-w-0 flex-1 flex-col gap-1.5 text-sm font-medium">
-              День плана
-              <input name="moveDate" type="date" value={moveDate} onChange={handleFieldChange} className={`${taskFieldClassName} h-10`} />
-            </label>
-            <Button type="button" variant="outline" onClick={handleSchedule} disabled={isSaving}>
-              Перенести
-            </Button>
-            <Button type="button" variant="outline" onClick={handleClearDate} disabled={isSaving}>
-              Убрать дату
-            </Button>
-          </div>
+          {isDeleteConfirmVisible ? (
+            <p className="text-sm text-muted-foreground">Эта дата больше не будет создаваться.</p>
+          ) : null}
+          {!isSeriesTask ? (
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+              <label className="flex min-w-0 flex-1 flex-col gap-1.5 text-sm font-medium">
+                День плана
+                <input name="moveDate" type="date" value={moveDate} onChange={handleFieldChange} className={`${taskFieldClassName} h-10`} />
+              </label>
+              <Button type="button" variant="outline" onClick={handleSchedule} disabled={isSaving}>
+                Перенести
+              </Button>
+              <Button type="button" variant="outline" onClick={handleClearDate} disabled={isSaving}>
+                Убрать дату
+              </Button>
+            </div>
+          ) : null}
         </div>
       ) : null}
     </li>

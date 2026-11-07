@@ -168,3 +168,23 @@ export function matchesRecurrenceDate(input: TRecurrenceMatch) {
   const index = weekIndex(input.startDate, input.occurrenceDate);
   return index >= 0 && index % input.intervalCount === 0;
 }
+
+export function keepsSeriesOccurrence(status: "todo" | "done", skipped: boolean, matchesSchedule: boolean) {
+  if (status === "done") {
+    return true;
+  }
+
+  if (skipped) {
+    return false;
+  }
+
+  return matchesSchedule;
+}
+
+export function nextSeriesGenerateFrom(currentGenerateFrom: string, startDate: string, scheduleChanged: boolean) {
+  if (scheduleChanged) {
+    return startDate;
+  }
+
+  return currentGenerateFrom > startDate ? currentGenerateFrom : startDate;
+}

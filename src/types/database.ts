@@ -378,6 +378,28 @@ export type Database = {
         }
         Returns: number
       }
+      apply_recurrence_series: {
+        Args: {
+          p_rule_id: string
+          p_title: string
+          p_description: string | null
+          p_priority: string
+          p_area_id: string | null
+          p_project_id: string | null
+          p_unit: string
+          p_interval_count: number
+          p_weekdays: number[]
+          p_start_date: string
+          p_end_date: string | null
+        }
+        Returns: number
+      }
+      delete_recurrence_series: {
+        Args: {
+          p_rule_id: string
+        }
+        Returns: number
+      }
     }
     Enums: {
       [_ in never]: never

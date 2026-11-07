@@ -141,38 +141,21 @@ export async function updateRecurrenceRule(input: {
     return failed();
   }
 
-  const { data: current, error: currentError } = await supabase
-    .from("recurrence_rules")
-    .select("generate_from, status")
-    .eq("id", parsed.data.id)
-    .eq("user_id", userId)
-    .maybeSingle();
+  const { error } = await supabase.rpc("apply_recurrence_series", {
+    p_rule_id: parsed.data.id,
+    p_title: parsed.data.title,
+    p_description: emptyToNull(parsed.data.description),
+    p_priority: parsed.data.priority,
+    p_area_id: placement.areaId,
+    p_project_id: placement.projectId,
+    p_unit: parsed.data.unit,
+    p_interval_count: parsed.data.intervalCount,
+    p_weekdays: sortedWeekdays(parsed.data.unit, parsed.data.weekdays),
+    p_start_date: parsed.data.startDate,
+    p_end_date: parsed.data.endDate,
+  });
 
-  if (currentError || !current || current.status === "cancelled") {
-    return failed();
-  }
-
-  const { data, error } = await supabase
-    .from("recurrence_rules")
-    .update({
-      title: parsed.data.title,
-      description: emptyToNull(parsed.data.description),
-      priority: parsed.data.priority,
-      area_id: placement.areaId,
-      project_id: placement.projectId,
-      unit: parsed.data.unit,
-      interval_count: parsed.data.intervalCount,
-      weekdays: sortedWeekdays(parsed.data.unit, parsed.data.weekdays),
-      start_date: parsed.data.startDate,
-      end_date: parsed.data.endDate,
-      generate_from: laterDate(current.generate_from, parsed.data.startDate),
-    })
-    .eq("id", parsed.data.id)
-    .eq("user_id", userId)
-    .neq("status", "cancelled")
-    .select("id");
-
-  if (error || !data?.length) {
+  if (error) {
     return failed();
   }
 
@@ -271,15 +254,12 @@ export async function deleteRecurrenceRule(id: string) {
     return failed();
   }
 
-  const { supabase, userId } = await requireUser();
-  const { data, error } = await supabase
-    .from("recurrence_rules")
-    .delete()
-    .eq("id", parsed.data)
-    .eq("user_id", userId)
-    .select("id");
+  const { supabase } = await requireUser();
+  const { error } = await supabase.rpc("delete_recurrence_series", {
+    p_rule_id: parsed.data,
+  });
 
-  if (error || !data?.length) {
+  if (error) {
     return failed();
   }
 

@@ -13,7 +13,8 @@ import {
   completeTask,
   createTask,
   moveDayTask,
-  restoreTask,
+  deleteTask,
+  restoreScheduledTask,
   scheduleTask,
   updateTask,
 } from "@/lib/tasks/actions";
@@ -190,6 +191,8 @@ export function CalendarBoard({
       completedAt: null,
       projectId: null,
       areaId: null,
+      recurrenceRuleId: null,
+      recurrenceOccurrenceDate: null,
       createdAt: new Date().toISOString(),
     };
 
@@ -215,7 +218,11 @@ export function CalendarBoard({
   };
 
   const handleRestore = (id: string) => {
-    void run({ type: "remove", id }, () => restoreTask(id));
+    void run({ type: "patch", id, patch: { status: "todo", completedAt: null } }, () => restoreScheduledTask(id));
+  };
+
+  const handleDeleteOccurrence = (id: string) => {
+    void run({ type: "remove", id }, () => deleteTask(id));
   };
 
   const handleMove = (id: string, direction: "up" | "down") => {
@@ -397,6 +404,7 @@ export function CalendarBoard({
                 onSave={handleSave}
                 onSchedule={handleSchedule}
                 onClearDate={handleClearDate}
+                onDelete={handleDeleteOccurrence}
               />
             ))}
           </ul>

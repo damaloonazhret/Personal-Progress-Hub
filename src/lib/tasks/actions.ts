@@ -16,6 +16,7 @@ import {
   type TTaskScope,
 } from "@/lib/tasks/model";
 import { getAreaTasks, getInboxTasks, getProjectTasks, getScheduledTasks, getTodayTasks } from "@/lib/tasks/queries";
+import { restoreScheduledDate, type TRestoreSource } from "@/lib/tasks/restore";
 
 export type TTaskActionState = {
   error: string | null;
@@ -33,6 +34,28 @@ function failed(message = saveError): TTaskActionState {
 
 function revalidateTasks() {
   revalidateWork();
+}
+
+const seriesTaskError = "Задача серии меняется только через правило повтора.";
+
+async function guardOrdinaryTask(id: string): Promise<TTaskActionState | null> {
+  const { supabase, userId } = await requireUser();
+  const { data, error } = await supabase
+    .from("tasks")
+    .select("recurrence_rule_id")
+    .eq("id", id)
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (error || !data) {
+    return failed();
+  }
+
+  if (data.recurrence_rule_id) {
+    return failed(seriesTaskError);
+  }
+
+  return null;
 }
 
 async function nextDayPosition(userId: string, scheduledDate: string, priority: string) {
@@ -204,6 +227,12 @@ export async function updateTask(input: {
     return failed(zodMessage(parsed.error));
   }
 
+  const blocked = await guardOrdinaryTask(parsed.data.id);
+
+  if (blocked) {
+    return blocked;
+  }
+
   const { supabase, userId } = await requireUser();
   const { data, error } = await supabase
     .from("tasks")
@@ -215,6 +244,7 @@ export async function updateTask(input: {
     })
     .eq("id", parsed.data.id)
     .eq("user_id", userId)
+    .is("recurrence_rule_id", null)
     .select("id");
 
   if (error || !data?.length) {
@@ -253,8 +283,54 @@ export async function completeTask(id: string) {
   return updateStatus(id, "done");
 }
 
+async function restoreFromSource(id: string, source: TRestoreSource) {
+  const parsed = taskIdSchema.safeParse(id);
+
+  if (!parsed.success) {
+    return failed();
+  }
+
+  const { supabase, userId } = await requireUser();
+  const { data: task, error: taskError } = await supabase
+    .from("tasks")
+    .select("status, scheduled_date, day_position, priority")
+    .eq("id", parsed.data)
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (taskError || !task || task.status !== "done") {
+    return failed();
+  }
+
+  const scheduledDate = restoreScheduledDate(source, task.scheduled_date);
+
+  if (source === "calendar" && !scheduledDate) {
+    return failed();
+  }
+
+  const dayPosition = scheduledDate ? (task.day_position ?? (await nextDayPosition(userId, scheduledDate, task.priority))) : null;
+  const { data, error } = await supabase
+    .from("tasks")
+    .update({ status: "todo", scheduled_date: scheduledDate, day_position: dayPosition })
+    .eq("id", parsed.data)
+    .eq("user_id", userId)
+    .eq("status", "done")
+    .select("id, scheduled_date");
+
+  if (error || !data?.length || data[0]?.scheduled_date !== scheduledDate) {
+    return failed();
+  }
+
+  revalidateTasks();
+  return ok();
+}
+
 export async function restoreTask(id: string) {
-  return updateStatus(id, "todo");
+  return restoreFromSource(id, "today");
+}
+
+export async function restoreScheduledTask(id: string) {
+  return restoreFromSource(id, "calendar");
 }
 
 export async function addTaskToToday(id: string) {
@@ -267,7 +343,7 @@ export async function addTaskToToday(id: string) {
   const { supabase, userId } = await requireUser();
   const { data: task, error: taskError } = await supabase
     .from("tasks")
-    .select("priority, scheduled_date")
+    .select("priority, scheduled_date, recurrence_rule_id")
     .eq("id", parsed.data)
     .eq("user_id", userId)
     .eq("status", "todo")
@@ -275,6 +351,10 @@ export async function addTaskToToday(id: string) {
 
   if (taskError || !task) {
     return failed();
+  }
+
+  if (task.recurrence_rule_id) {
+    return failed(seriesTaskError);
   }
 
   const localToday = await getLocalToday();
@@ -290,6 +370,7 @@ export async function addTaskToToday(id: string) {
     .eq("id", parsed.data)
     .eq("user_id", userId)
     .eq("status", "todo")
+    .is("recurrence_rule_id", null)
     .select("id");
 
   if (error || !data?.length) {
@@ -307,6 +388,12 @@ export async function removeTaskFromToday(id: string) {
     return failed();
   }
 
+  const blocked = await guardOrdinaryTask(parsed.data);
+
+  if (blocked) {
+    return blocked;
+  }
+
   const { supabase, userId } = await requireUser();
   const { data, error } = await supabase
     .from("tasks")
@@ -314,6 +401,7 @@ export async function removeTaskFromToday(id: string) {
     .eq("id", parsed.data)
     .eq("user_id", userId)
     .eq("status", "todo")
+    .is("recurrence_rule_id", null)
     .select("id");
 
   if (error || !data?.length) {
@@ -331,6 +419,12 @@ export async function scheduleTask(input: { id: string; scheduledDate: string })
     return failed(zodMessage(parsed.error));
   }
 
+  const blocked = await guardOrdinaryTask(parsed.data.id);
+
+  if (blocked) {
+    return blocked;
+  }
+
   const { supabase, userId } = await requireUser();
   const scheduledDate = emptyToNull(parsed.data.scheduledDate);
 
@@ -340,6 +434,7 @@ export async function scheduleTask(input: { id: string; scheduledDate: string })
       .update({ scheduled_date: null, day_position: null })
       .eq("id", parsed.data.id)
       .eq("user_id", userId)
+      .is("recurrence_rule_id", null)
       .select("id");
 
     if (error || !data?.length) {
@@ -371,6 +466,7 @@ export async function scheduleTask(input: { id: string; scheduledDate: string })
     .update({ scheduled_date: scheduledDate, day_position: dayPosition })
     .eq("id", parsed.data.id)
     .eq("user_id", userId)
+    .is("recurrence_rule_id", null)
     .select("id");
 
   if (error || !data?.length) {
@@ -458,6 +554,12 @@ export async function placeTask(input: {
     return failed(zodMessage(parsed.error));
   }
 
+  const blocked = await guardOrdinaryTask(parsed.data.id);
+
+  if (blocked) {
+    return blocked;
+  }
+
   const { supabase, userId } = await requireUser();
   const placement = await resolvePlacement(userId, parsed.data.projectId, parsed.data.areaId);
 
@@ -475,6 +577,7 @@ export async function placeTask(input: {
     })
     .eq("id", parsed.data.id)
     .eq("user_id", userId)
+    .is("recurrence_rule_id", null)
     .select("id");
 
   if (error || !data?.length) {

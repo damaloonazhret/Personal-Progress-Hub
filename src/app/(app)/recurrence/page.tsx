@@ -14,8 +14,15 @@ export const metadata: Metadata = {
 
 export const instant = false;
 
-async function RecurrenceContent() {
+type TProps = {
+  searchParams: Promise<{
+    rule?: string;
+  }>;
+};
+
+async function RecurrenceContent({ searchParams }: TProps) {
   await connection();
+  const params = await searchParams;
   const [rules, catalog, today] = await Promise.all([getRecurrenceRules(), getCatalog(), getLocalToday()]);
 
   return (
@@ -25,18 +32,19 @@ async function RecurrenceContent() {
       projects={catalog.projects}
       today={today}
       loadError={rules.error ?? catalog.error}
+      focusRuleId={params.rule ?? null}
     />
   );
 }
 
-export default function RecurrencePage() {
+export default function RecurrencePage({ searchParams }: TProps) {
   return (
     <SectionPage
       title="Повторы"
-      description="«Сегодня» и «Обзор» создают пропущенные вхождения активных правил до текущей местной даты. Будущие появятся в календаре при открытии нужного диапазона. Изменение правила не переписывает уже созданные задачи."
+      description="«Сегодня» и «Обзор» создают пропущенные вхождения активных правил до текущей местной даты. Будущие появятся в календаре при открытии нужного диапазона. Изменение правила обновляет уже созданные задачи этой серии."
     >
       <Suspense fallback={<p className="text-sm text-muted-foreground">Загрузка правил…</p>}>
-        <RecurrenceContent />
+        <RecurrenceContent searchParams={searchParams} />
       </Suspense>
     </SectionPage>
   );

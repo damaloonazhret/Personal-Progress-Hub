@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState, type ChangeEvent } from "react";
 
 import { taskFieldClassName } from "@/components/tasks/task-field";
@@ -73,11 +74,14 @@ export function TaskRow({
   const dueDateIsPast = Boolean(task.dueDate) && isPastDueDate(task.dueDate ?? "", today);
   const projectName = catalog?.projects.find((project) => project.id === task.projectId)?.name ?? null;
   const areaName = catalog?.areas.find((area) => area.id === task.areaId)?.name ?? null;
-  const showPlacement = Boolean(onPlace && catalog);
+  const isSeriesTask = task.recurrenceRuleId !== null;
+  const showPlacement = !isSeriesTask && Boolean(onPlace && catalog);
   const placementValue = task.projectId ? `project:${task.projectId}` : task.areaId ? `area:${task.areaId}` : "inbox";
   const isScheduledForToday = isTodayTask(task, today);
-  const showAddToToday = view !== "completed" && view !== "today" && !isScheduledForToday;
-  const showRemoveFromToday = view !== "completed" && isScheduledForToday;
+  const isOrdinaryActiveTask = !isSeriesTask && view !== "completed";
+  const isOutsideToday = view !== "today" && !isScheduledForToday;
+  const showAddToToday = isOrdinaryActiveTask && isOutsideToday;
+  const showRemoveFromToday = isOrdinaryActiveTask && isScheduledForToday;
   const hasAreas = Boolean(catalog && catalog.areas.length > 0);
   const hasProjects = Boolean(catalog && catalog.projects.length > 0);
   const locationLabel = projectName ? `Проект: ${projectName}` : areaName ? `Сфера: ${areaName}` : null;
@@ -339,9 +343,15 @@ export function TaskRow({
               </Button>
             </>
           ) : null}
-          <Button type="button" variant="outline" onClick={handleStartEdit}>
-            Изменить
-          </Button>
+          {isSeriesTask ? (
+            <Button variant="outline" asChild>
+              <Link href={`/recurrence?rule=${task.recurrenceRuleId}`}>Правило повтора</Link>
+            </Button>
+          ) : (
+            <Button type="button" variant="outline" onClick={handleStartEdit}>
+              Изменить
+            </Button>
+          )}
           <Button type="button" variant="destructive" onClick={handleAskDelete}>
             Удалить
           </Button>

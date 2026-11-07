@@ -1,11 +1,14 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
+import { restoreScheduledDate } from "../tasks/restore.ts";
 import {
   addIsoDays,
   isoWeekMonday,
   isoWeekday,
+  keepsSeriesOccurrence,
   matchesRecurrenceDate,
+  nextSeriesGenerateFrom,
   occurrenceDatesInRange,
   recurrenceWindows,
   weekIndex,
@@ -207,5 +210,104 @@ describe("occurrence expansion", () => {
         assert.equal(next.fromDate, addIsoDays(window.toDate, 1));
       }
     }
+  });
+});
+
+function scheduleMatch(occurrenceDate: string, schedule: Partial<TRecurrenceSchedule> & { startDate: string }) {
+  return matchesRecurrenceDate({
+    unit: schedule.unit ?? "week",
+    intervalCount: schedule.intervalCount ?? 1,
+    weekdays: schedule.weekdays ?? [1],
+    startDate: schedule.startDate,
+    endDate: schedule.endDate ?? null,
+    generateFrom: schedule.startDate,
+    occurrenceDate,
+  });
+}
+
+describe("series reconcile", () => {
+  it("keeps a completed occurrence that no longer matches", () => {
+    const matches = scheduleMatch("2026-11-02", { unit: "week", weekdays: [3], startDate: "2026-11-04" });
+    assert.equal(matches, false);
+    assert.equal(keepsSeriesOccurrence("done", false, matches), true);
+  });
+
+  it("drops an active occurrence that no longer matches", () => {
+    const matches = scheduleMatch("2026-11-02", { unit: "week", weekdays: [3], startDate: "2026-11-04" });
+    assert.equal(keepsSeriesOccurrence("todo", false, matches), false);
+  });
+
+  it("keeps an active occurrence on a still selected weekday", () => {
+    const matches = scheduleMatch("2026-11-04", { unit: "week", weekdays: [3], startDate: "2026-11-04" });
+    assert.equal(matches, true);
+    assert.equal(keepsSeriesOccurrence("todo", false, matches), true);
+  });
+
+  it("drops a skipped date even when it still matches", () => {
+    const matches = scheduleMatch("2026-11-04", { unit: "week", weekdays: [3], startDate: "2026-11-04" });
+    assert.equal(keepsSeriesOccurrence("todo", true, matches), false);
+    assert.equal(keepsSeriesOccurrence("done", true, matches), true);
+  });
+
+  it("drops active dates outside a shorter end date and keeps completed ones", () => {
+    const matches = scheduleMatch("2026-11-18", {
+      unit: "week",
+      weekdays: [3],
+      startDate: "2026-11-04",
+      endDate: "2026-11-11",
+    });
+    assert.equal(matches, false);
+    assert.equal(keepsSeriesOccurrence("todo", false, matches), false);
+    assert.equal(keepsSeriesOccurrence("done", false, matches), true);
+  });
+
+  it("drops active dates before a later start date", () => {
+    const matches = scheduleMatch("2026-11-04", { unit: "week", weekdays: [3], startDate: "2026-11-11" });
+    assert.equal(matches, false);
+    assert.equal(keepsSeriesOccurrence("todo", false, matches), false);
+  });
+
+  it("recalculates an interval without duplicating a date that still matches", () => {
+    const everyWeek = scheduleMatch("2026-11-09", { unit: "day", intervalCount: 1, weekdays: [], startDate: "2026-11-02" });
+    const everyOther = scheduleMatch("2026-11-09", { unit: "day", intervalCount: 2, weekdays: [], startDate: "2026-11-02" });
+    const offInterval = scheduleMatch("2026-11-10", { unit: "day", intervalCount: 2, weekdays: [], startDate: "2026-11-02" });
+    assert.equal(everyWeek, true);
+    assert.equal(everyOther, false);
+    assert.equal(offInterval, true);
+    assert.equal(keepsSeriesOccurrence("todo", false, everyOther), false);
+    assert.equal(keepsSeriesOccurrence("todo", false, offInterval), true);
+  });
+
+  it("resets generate_from when the schedule changes and keeps it otherwise", () => {
+    assert.equal(nextSeriesGenerateFrom("2026-11-20", "2026-11-04", true), "2026-11-04");
+    assert.equal(nextSeriesGenerateFrom("2026-11-20", "2026-11-04", false), "2026-11-20");
+    assert.equal(nextSeriesGenerateFrom("2026-11-01", "2026-11-04", false), "2026-11-04");
+  });
+
+  it("does not generate a second row for the same occurrence date", () => {
+    const dates = occurrenceDatesInRange(
+      {
+        unit: "week",
+        intervalCount: 1,
+        weekdays: [1, 3],
+        startDate: "2026-11-02",
+        endDate: null,
+        generateFrom: "2026-11-02",
+      },
+      "2026-11-02",
+      "2026-11-15",
+    );
+    assert.deepEqual(dates, ["2026-11-02", "2026-11-04", "2026-11-09", "2026-11-11"]);
+    assert.equal(new Set(dates).size, dates.length);
+  });
+});
+
+describe("calendar restore", () => {
+  it("keeps the planned date in the calendar and clears it from Today and Completed", () => {
+    const planned = "2026-11-12";
+    assert.equal(planned, "2026-11-12");
+    assert.equal(restoreScheduledDate("calendar", planned), planned);
+    assert.equal(restoreScheduledDate("today", planned), null);
+    assert.equal(restoreScheduledDate("completed", planned), null);
   });
 });
