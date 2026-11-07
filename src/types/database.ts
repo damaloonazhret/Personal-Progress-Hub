@@ -118,6 +118,107 @@ export type Database = {
           },
         ]
       }
+      recurrence_rules: {
+        Row: {
+          area_id: string | null
+          created_at: string
+          description: string | null
+          end_date: string | null
+          generate_from: string
+          id: string
+          interval_count: number
+          priority: string
+          project_id: string | null
+          start_date: string
+          status: string
+          title: string
+          unit: string
+          updated_at: string
+          user_id: string
+          weekdays: number[]
+        }
+        Insert: {
+          area_id?: string | null
+          created_at?: string
+          description?: string | null
+          end_date?: string | null
+          generate_from: string
+          id?: string
+          interval_count: number
+          priority?: string
+          project_id?: string | null
+          start_date: string
+          status?: string
+          title: string
+          unit: string
+          updated_at?: string
+          user_id: string
+          weekdays?: number[]
+        }
+        Update: {
+          area_id?: string | null
+          created_at?: string
+          description?: string | null
+          end_date?: string | null
+          generate_from?: string
+          id?: string
+          interval_count?: number
+          priority?: string
+          project_id?: string | null
+          start_date?: string
+          status?: string
+          title?: string
+          unit?: string
+          updated_at?: string
+          user_id?: string
+          weekdays?: number[]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "recurrence_rules_area_user_fkey"
+            columns: ["user_id", "area_id"]
+            isOneToOne: false
+            referencedRelation: "areas"
+            referencedColumns: ["user_id", "id"]
+          },
+          {
+            foreignKeyName: "recurrence_rules_project_area_user_fkey"
+            columns: ["user_id", "project_id", "area_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["user_id", "id", "area_id"]
+          },
+        ]
+      }
+      recurrence_skips: {
+        Row: {
+          created_at: string
+          occurrence_date: string
+          rule_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          occurrence_date: string
+          rule_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          occurrence_date?: string
+          rule_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "recurrence_skips_rule_user_fkey"
+            columns: ["user_id", "rule_id"]
+            isOneToOne: false
+            referencedRelation: "recurrence_rules"
+            referencedColumns: ["user_id", "id"]
+          },
+        ]
+      }
       task_templates: {
         Row: {
           area_id: string | null
@@ -184,6 +285,8 @@ export type Database = {
           position: number
           priority: string
           project_id: string | null
+          recurrence_occurrence_date: string | null
+          recurrence_rule_id: string | null
           scheduled_date: string | null
           status: string
           template_id: string | null
@@ -202,6 +305,8 @@ export type Database = {
           position?: number
           priority?: string
           project_id?: string | null
+          recurrence_occurrence_date?: string | null
+          recurrence_rule_id?: string | null
           scheduled_date?: string | null
           status?: string
           template_id?: string | null
@@ -220,6 +325,8 @@ export type Database = {
           position?: number
           priority?: string
           project_id?: string | null
+          recurrence_occurrence_date?: string | null
+          recurrence_rule_id?: string | null
           scheduled_date?: string | null
           status?: string
           template_id?: string | null
@@ -243,6 +350,13 @@ export type Database = {
             referencedColumns: ["user_id", "id", "area_id"]
           },
           {
+            foreignKeyName: "tasks_recurrence_rule_user_fkey"
+            columns: ["user_id", "recurrence_rule_id"]
+            isOneToOne: false
+            referencedRelation: "recurrence_rules"
+            referencedColumns: ["user_id", "id"]
+          },
+          {
             foreignKeyName: "tasks_template_user_fkey"
             columns: ["user_id", "template_id"]
             isOneToOne: false
@@ -256,7 +370,14 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      generate_recurrence_batch: {
+        Args: {
+          p_from: string
+          p_to: string
+          p_rule_ids: string[]
+        }
+        Returns: number
+      }
     }
     Enums: {
       [_ in never]: never

@@ -4,6 +4,7 @@ import {
   Inbox,
   Files,
   Layers,
+  Repeat,
   LayoutDashboard,
   ListChecks,
   Settings,
@@ -23,6 +24,7 @@ export const primaryNavItems: TNavItem[] = [
   { href: "/projects", label: "Проекты", icon: FolderKanban },
   { href: "/areas", label: "Сферы", icon: Layers },
   { href: "/templates", label: "Шаблоны", icon: Files },
+  { href: "/recurrence", label: "Повторы", icon: Repeat },
   { href: "/completed", label: "Готово", icon: CheckCircle2 },
 ];
 

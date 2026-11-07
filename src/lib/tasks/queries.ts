@@ -1,5 +1,6 @@
 import { requireUser } from "@/lib/auth/session";
 import { getLocalToday } from "@/lib/profile/queries";
+import { generateRecurrenceThroughToday } from "@/lib/recurrence/generate";
 import {
   compareTasks,
   type TTask,
@@ -89,6 +90,12 @@ export async function getInboxTasks(): Promise<TTaskListResult> {
 }
 
 export async function getTodayTasks(): Promise<TTaskListResult> {
+  const generated = await generateRecurrenceThroughToday();
+
+  if (generated.error) {
+    return { tasks: [], error: generated.error };
+  }
+
   const { supabase, userId } = await requireUser();
   const localToday = await getLocalToday();
   const { data, error } = await supabase
@@ -177,6 +184,12 @@ export async function getAreaTasks(areaId: string): Promise<TTaskListResult> {
 }
 
 export async function getTaskSummary(): Promise<{ counts: TTaskSummary; error: string | null }> {
+  const generated = await generateRecurrenceThroughToday();
+
+  if (generated.error) {
+    return { counts: { active: 0, today: 0, completed: 0 }, error: generated.error };
+  }
+
   const { supabase, userId } = await requireUser();
   const localToday = await getLocalToday();
   const { data, error } = await supabase.from("tasks").select("status, scheduled_date").eq("user_id", userId);

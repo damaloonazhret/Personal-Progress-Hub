@@ -10,4 +10,5 @@ export function revalidateWork() {
   revalidatePath("/areas");
   revalidatePath("/areas/[id]", "page");
   revalidatePath("/templates");
+  revalidatePath("/recurrence");
 }
