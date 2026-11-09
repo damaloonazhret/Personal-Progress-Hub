@@ -1,0 +1,675 @@
+"use server";
+
+import { requireUser } from "@/lib/auth/session";
+import { revalidateWork } from "@/lib/app/revalidate";
+import { getLocalToday } from "@/lib/profile/queries";
+import {
+  createTaskSchema,
+  editTaskSchema,
+  emptyToNull,
+  moveTaskInList,
+  placeTaskSchema,
+  scheduleTaskSchema,
+  taskIdSchema,
+  zodMessage,
+  type TTaskDirection,
+  type TTaskScope,
+} from "@/lib/tasks/model";
+import { getAreaTasks, getInboxTasks, getProjectTasks, getScheduledTasks, getTodayTasks } from "@/lib/tasks/queries";
+import { restoreScheduledDate, type TRestoreSource } from "@/lib/tasks/restore";
+
+export type TTaskActionState = {
+  error: string | null;
+};
+
+const saveError = "Не удалось сохранить задачу.";
+
+function ok(): TTaskActionState {
+  return { error: null };
+}
+
+function failed(message = saveError): TTaskActionState {
+  return { error: message };
+}
+
+function revalidateTasks() {
+  revalidateWork();
+}
+
+const seriesTaskError = "Задача серии меняется только через правило повтора.";
+
+async function guardOrdinaryTask(id: string): Promise<TTaskActionState | null> {
+  const { supabase, userId } = await requireUser();
+  const { data, error } = await supabase
+    .from("tasks")
+    .select("recurrence_rule_id")
+    .eq("id", id)
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (error || !data) {
+    return failed();
+  }
+
+  if (data.recurrence_rule_id) {
+    return failed(seriesTaskError);
+  }
+
+  return null;
+}
+
+async function nextDayPosition(userId: string, scheduledDate: string, priority: string) {
+  const { supabase } = await requireUser();
+  const { data } = await supabase
+    .from("tasks")
+    .select("day_position")
+    .eq("user_id", userId)
+    .eq("scheduled_date", scheduledDate)
+    .eq("priority", priority)
+    .order("day_position", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  return (data?.day_position ?? -1) + 1;
+}
+
+async function nextListPosition(userId: string, placement: { projectId: string | null; areaId: string | null }) {
+  const { supabase } = await requireUser();
+  const query = supabase.from("tasks").select("position").eq("user_id", userId).order("position", { ascending: false }).limit(1);
+  const scoped = placement.projectId
+    ? query.eq("project_id", placement.projectId)
+    : placement.areaId
+      ? query.is("project_id", null).eq("area_id", placement.areaId)
+      : query.is("project_id", null).is("area_id", null);
+  const { data } = await scoped.maybeSingle();
+
+  return (data?.position ?? -1) + 1;
+}
+
+async function resolvePlacement(userId: string, projectId: string | null, areaId: string | null) {
+  const { supabase } = await requireUser();
+
+  if (projectId) {
+    const { data } = await supabase
+      .from("projects")
+      .select("id, area_id")
+      .eq("id", projectId)
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (!data) {
+      return null;
+    }
+
+    if (areaId && areaId !== data.area_id) {
+      return null;
+    }
+
+    return { projectId: data.id, areaId: data.area_id };
+  }
+
+  if (areaId) {
+    const { data } = await supabase.from("areas").select("id").eq("id", areaId).eq("user_id", userId).maybeSingle();
+
+    if (!data) {
+      return null;
+    }
+
+    return { projectId: null, areaId: data.id };
+  }
+
+  return { projectId: null, areaId: null };
+}
+
+export async function createTask(input: {
+  title: string;
+  place: "inbox" | "today";
+  projectId?: string | null;
+  areaId?: string | null;
+  scheduledDate?: string;
+}): Promise<TTaskActionState> {
+  const parsed = createTaskSchema.safeParse(input);
+
+  if (!parsed.success) {
+    return failed(zodMessage(parsed.error));
+  }
+
+  const { supabase, userId } = await requireUser();
+  const placement = await resolvePlacement(userId, parsed.data.projectId ?? null, parsed.data.areaId ?? null);
+
+  if (!placement) {
+    return failed();
+  }
+
+  const position = await nextListPosition(userId, placement);
+  const requestedDate = parsed.data.scheduledDate && parsed.data.scheduledDate.length > 0 ? parsed.data.scheduledDate : null;
+  const scheduledDate = requestedDate ?? (parsed.data.place === "today" ? await getLocalToday() : null);
+  const dayPosition = scheduledDate ? await nextDayPosition(userId, scheduledDate, "medium") : null;
+  const { error } = await supabase.from("tasks").insert({
+    user_id: userId,
+    title: parsed.data.title,
+    description: null,
+    priority: "medium",
+    due_date: null,
+    status: "todo",
+    scheduled_date: scheduledDate,
+    day_position: dayPosition,
+    position,
+    project_id: placement.projectId,
+    area_id: placement.areaId,
+  });
+
+  if (error) {
+    return failed();
+  }
+
+  revalidateTasks();
+  return ok();
+}
+
+export async function createTaskFromTemplate(templateId: string): Promise<TTaskActionState> {
+  const parsed = taskIdSchema.safeParse(templateId);
+
+  if (!parsed.success) {
+    return failed("Не удалось создать задачу из шаблона.");
+  }
+
+  const { supabase, userId } = await requireUser();
+  const { data: template, error: templateError } = await supabase
+    .from("task_templates")
+    .select("id, title, description, priority, area_id, project_id")
+    .eq("id", parsed.data)
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (templateError || !template) {
+    return failed("Не удалось создать задачу из шаблона.");
+  }
+
+  const priority = template.priority === "low" || template.priority === "high" ? template.priority : "medium";
+  const position = await nextListPosition(userId, {
+    projectId: template.project_id,
+    areaId: template.area_id,
+  });
+  const { error } = await supabase.from("tasks").insert({
+    user_id: userId,
+    title: template.title,
+    description: template.description,
+    priority,
+    due_date: null,
+    status: "todo",
+    scheduled_date: null,
+    day_position: null,
+    position,
+    project_id: template.project_id,
+    area_id: template.area_id,
+    template_id: template.id,
+  });
+
+  if (error) {
+    return failed("Не удалось создать задачу из шаблона.");
+  }
+
+  revalidateTasks();
+  return ok();
+}
+
+export async function updateTask(input: {
+  id: string;
+  title: string;
+  description: string;
+  priority: string;
+  dueDate: string;
+}): Promise<TTaskActionState> {
+  const parsed = editTaskSchema.safeParse(input);
+
+  if (!parsed.success) {
+    return failed(zodMessage(parsed.error));
+  }
+
+  const blocked = await guardOrdinaryTask(parsed.data.id);
+
+  if (blocked) {
+    return blocked;
+  }
+
+  const { supabase, userId } = await requireUser();
+  const { data, error } = await supabase
+    .from("tasks")
+    .update({
+      title: parsed.data.title,
+      description: emptyToNull(parsed.data.description),
+      priority: parsed.data.priority,
+      due_date: emptyToNull(parsed.data.dueDate),
+    })
+    .eq("id", parsed.data.id)
+    .eq("user_id", userId)
+    .is("recurrence_rule_id", null)
+    .select("id");
+
+  if (error || !data?.length) {
+    return failed();
+  }
+
+  revalidateTasks();
+  return ok();
+}
+
+async function updateStatus(id: string, status: "todo" | "done") {
+  const parsed = taskIdSchema.safeParse(id);
+
+  if (!parsed.success) {
+    return failed();
+  }
+
+  const { supabase, userId } = await requireUser();
+  const { data, error } = await supabase
+    .from("tasks")
+    .update({ status })
+    .eq("id", parsed.data)
+    .eq("user_id", userId)
+    .eq("status", status === "done" ? "todo" : "done")
+    .select("id");
+
+  if (error || !data?.length) {
+    return failed();
+  }
+
+  revalidateTasks();
+  return ok();
+}
+
+export async function completeTask(id: string) {
+  return updateStatus(id, "done");
+}
+
+async function restoreFromSource(id: string, source: TRestoreSource) {
+  const parsed = taskIdSchema.safeParse(id);
+
+  if (!parsed.success) {
+    return failed();
+  }
+
+  const { supabase, userId } = await requireUser();
+  const { data: task, error: taskError } = await supabase
+    .from("tasks")
+    .select("status, scheduled_date, day_position, priority")
+    .eq("id", parsed.data)
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (taskError || !task || task.status !== "done") {
+    return failed();
+  }
+
+  const scheduledDate = restoreScheduledDate(source, task.scheduled_date);
+
+  if (source === "calendar" && !scheduledDate) {
+    return failed();
+  }
+
+  const dayPosition = scheduledDate ? (task.day_position ?? (await nextDayPosition(userId, scheduledDate, task.priority))) : null;
+  const { data, error } = await supabase
+    .from("tasks")
+    .update({ status: "todo", scheduled_date: scheduledDate, day_position: dayPosition })
+    .eq("id", parsed.data)
+    .eq("user_id", userId)
+    .eq("status", "done")
+    .select("id, scheduled_date");
+
+  if (error || !data?.length || data[0]?.scheduled_date !== scheduledDate) {
+    return failed();
+  }
+
+  revalidateTasks();
+  return ok();
+}
+
+export async function restoreTask(id: string) {
+  return restoreFromSource(id, "today");
+}
+
+export async function restoreScheduledTask(id: string) {
+  return restoreFromSource(id, "calendar");
+}
+
+export async function addTaskToToday(id: string) {
+  const parsed = taskIdSchema.safeParse(id);
+
+  if (!parsed.success) {
+    return failed();
+  }
+
+  const { supabase, userId } = await requireUser();
+  const { data: task, error: taskError } = await supabase
+    .from("tasks")
+    .select("priority, scheduled_date, recurrence_rule_id")
+    .eq("id", parsed.data)
+    .eq("user_id", userId)
+    .eq("status", "todo")
+    .maybeSingle();
+
+  if (taskError || !task) {
+    return failed();
+  }
+
+  if (task.recurrence_rule_id) {
+    return failed(seriesTaskError);
+  }
+
+  const localToday = await getLocalToday();
+
+  if (task.scheduled_date === localToday) {
+    return ok();
+  }
+
+  const dayPosition = await nextDayPosition(userId, localToday, task.priority);
+  const { data, error } = await supabase
+    .from("tasks")
+    .update({ scheduled_date: localToday, day_position: dayPosition })
+    .eq("id", parsed.data)
+    .eq("user_id", userId)
+    .eq("status", "todo")
+    .is("recurrence_rule_id", null)
+    .select("id");
+
+  if (error || !data?.length) {
+    return failed();
+  }
+
+  revalidateTasks();
+  return ok();
+}
+
+export async function removeTaskFromToday(id: string) {
+  const parsed = taskIdSchema.safeParse(id);
+
+  if (!parsed.success) {
+    return failed();
+  }
+
+  const blocked = await guardOrdinaryTask(parsed.data);
+
+  if (blocked) {
+    return blocked;
+  }
+
+  const { supabase, userId } = await requireUser();
+  const { data, error } = await supabase
+    .from("tasks")
+    .update({ scheduled_date: null, day_position: null })
+    .eq("id", parsed.data)
+    .eq("user_id", userId)
+    .eq("status", "todo")
+    .is("recurrence_rule_id", null)
+    .select("id");
+
+  if (error || !data?.length) {
+    return failed();
+  }
+
+  revalidateTasks();
+  return ok();
+}
+
+export async function scheduleTask(input: { id: string; scheduledDate: string }): Promise<TTaskActionState> {
+  const parsed = scheduleTaskSchema.safeParse(input);
+
+  if (!parsed.success) {
+    return failed(zodMessage(parsed.error));
+  }
+
+  const blocked = await guardOrdinaryTask(parsed.data.id);
+
+  if (blocked) {
+    return blocked;
+  }
+
+  const { supabase, userId } = await requireUser();
+  const scheduledDate = emptyToNull(parsed.data.scheduledDate);
+
+  if (!scheduledDate) {
+    const { data, error } = await supabase
+      .from("tasks")
+      .update({ scheduled_date: null, day_position: null })
+      .eq("id", parsed.data.id)
+      .eq("user_id", userId)
+      .is("recurrence_rule_id", null)
+      .select("id");
+
+    if (error || !data?.length) {
+      return failed();
+    }
+
+    revalidateTasks();
+    return ok();
+  }
+
+  const { data: task, error: taskError } = await supabase
+    .from("tasks")
+    .select("priority, scheduled_date")
+    .eq("id", parsed.data.id)
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (taskError || !task) {
+    return failed();
+  }
+
+  if (task.scheduled_date === scheduledDate) {
+    return ok();
+  }
+
+  const dayPosition = await nextDayPosition(userId, scheduledDate, task.priority);
+  const { data, error } = await supabase
+    .from("tasks")
+    .update({ scheduled_date: scheduledDate, day_position: dayPosition })
+    .eq("id", parsed.data.id)
+    .eq("user_id", userId)
+    .is("recurrence_rule_id", null)
+    .select("id");
+
+  if (error || !data?.length) {
+    return failed();
+  }
+
+  revalidateTasks();
+  return ok();
+}
+
+export async function moveDayTask(id: string, direction: TTaskDirection, scheduledDate: string) {
+  const parsed = taskIdSchema.safeParse(id);
+  const dateIsValid = scheduleTaskSchema.safeParse({ id, scheduledDate }).success && scheduledDate.length > 0;
+
+  if (!parsed.success || !dateIsValid || (direction !== "up" && direction !== "down")) {
+    return failed();
+  }
+
+  const { supabase, userId } = await requireUser();
+  const loaded = await getScheduledTasks(scheduledDate, scheduledDate);
+
+  if (loaded.error) {
+    return failed("Не удалось изменить порядок.");
+  }
+
+  const current = loaded.tasks;
+  const next = moveTaskInList(current, parsed.data, direction, "today");
+  const currentById = new Map(current.map((task) => [task.id, task]));
+
+  for (const task of next) {
+    const previous = currentById.get(task.id);
+    const dayPosition = task.dayPosition ?? 0;
+
+    if (!previous || previous.dayPosition === dayPosition) {
+      continue;
+    }
+
+    const { error } = await supabase
+      .from("tasks")
+      .update({ day_position: dayPosition })
+      .eq("id", task.id)
+      .eq("user_id", userId)
+      .eq("scheduled_date", scheduledDate);
+
+    if (error) {
+      return failed("Не удалось изменить порядок.");
+    }
+  }
+
+  revalidateTasks();
+  return ok();
+}
+
+export async function deleteTask(id: string) {
+  const parsed = taskIdSchema.safeParse(id);
+
+  if (!parsed.success) {
+    return failed();
+  }
+
+  const { supabase, userId } = await requireUser();
+  const { data, error } = await supabase
+    .from("tasks")
+    .delete()
+    .eq("id", parsed.data)
+    .eq("user_id", userId)
+    .select("id");
+
+  if (error || !data?.length) {
+    return failed();
+  }
+
+  revalidateTasks();
+  return ok();
+}
+
+export async function placeTask(input: {
+  id: string;
+  projectId: string | null;
+  areaId: string | null;
+}): Promise<TTaskActionState> {
+  const parsed = placeTaskSchema.safeParse(input);
+
+  if (!parsed.success) {
+    return failed(zodMessage(parsed.error));
+  }
+
+  const blocked = await guardOrdinaryTask(parsed.data.id);
+
+  if (blocked) {
+    return blocked;
+  }
+
+  const { supabase, userId } = await requireUser();
+  const placement = await resolvePlacement(userId, parsed.data.projectId, parsed.data.areaId);
+
+  if (!placement) {
+    return failed();
+  }
+
+  const position = await nextListPosition(userId, placement);
+  const { data, error } = await supabase
+    .from("tasks")
+    .update({
+      project_id: placement.projectId,
+      area_id: placement.areaId,
+      position,
+    })
+    .eq("id", parsed.data.id)
+    .eq("user_id", userId)
+    .is("recurrence_rule_id", null)
+    .select("id");
+
+  if (error || !data?.length) {
+    return failed();
+  }
+
+  revalidateTasks();
+  return ok();
+}
+
+async function loadOrderedTasks(scope: TTaskScope) {
+  if (scope.view === "today") {
+    return getTodayTasks();
+  }
+
+  if (scope.view === "project" && scope.projectId) {
+    const result = await getProjectTasks(scope.projectId);
+    return { ...result, tasks: result.tasks.filter((task) => task.status === "todo") };
+  }
+
+  if (scope.view === "area" && scope.areaId) {
+    const result = await getAreaTasks(scope.areaId);
+    return { ...result, tasks: result.tasks.filter((task) => task.status === "todo") };
+  }
+
+  return getInboxTasks();
+}
+
+export async function moveTask(id: string, direction: TTaskDirection, scope: TTaskScope) {
+  const parsed = taskIdSchema.safeParse(id);
+
+  if (!parsed.success || (direction !== "up" && direction !== "down")) {
+    return failed();
+  }
+
+  const { supabase, userId } = await requireUser();
+  if (scope.view === "completed") {
+    return failed();
+  }
+
+  const loaded = await loadOrderedTasks(scope);
+
+  if (loaded.error) {
+    return failed("Не удалось изменить порядок.");
+  }
+
+  const current = loaded.tasks;
+  const next = moveTaskInList(current, parsed.data, direction, scope.view);
+  const currentById = new Map(current.map((task) => [task.id, task]));
+
+  for (const task of next) {
+    const previous = currentById.get(task.id);
+
+    if (!previous) {
+      continue;
+    }
+
+    if (scope.view === "today") {
+      const dayPosition = task.dayPosition ?? 0;
+
+      if (previous.dayPosition === dayPosition) {
+        continue;
+      }
+
+      const { error } = await supabase
+        .from("tasks")
+        .update({ day_position: dayPosition })
+        .eq("id", task.id)
+        .eq("user_id", userId);
+
+      if (error) {
+        return failed("Не удалось изменить порядок.");
+      }
+
+      continue;
+    }
+
+    if (previous.position === task.position) {
+      continue;
+    }
+
+    const { error } = await supabase
+      .from("tasks")
+      .update({ position: task.position })
+      .eq("id", task.id)
+      .eq("user_id", userId);
+
+    if (error) {
+      return failed("Не удалось изменить порядок.");
+    }
+  }
+
+  revalidateTasks();
+  return ok();
+}

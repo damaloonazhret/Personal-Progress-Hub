@@ -1,34 +1,39 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Personal Progress Hub
 
-## Getting Started
+Личное приложение для задач, проектов и прогресса. Задаче не нужно назначать время: её можно взять на сегодня, выполнить или оставить на потом.
 
-First, run the development server:
+Требования и этапы описаны в `instruction.md`. Этот файл не заменяет спецификацию.
+
+## Стек
+
+- Next.js 16 App Router, React, TypeScript, Tailwind CSS
+- shadcn/ui
+- Supabase через `@supabase/ssr`
+
+## Локальный запуск
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Приложение открывается на [http://localhost:3000](http://localhost:3000) и перенаправляет на `/dashboard`.
 
-You can start editing the page by modifying `src/app/page.tsx`. The page auto-updates as you edit the file.
+Нужен Node.js 20.9 или новее. Сейчас проект проверялся на Node.js 26 LTS.
 
-## Learn More
+## Переменные окружения
 
-To learn more about Next.js, take a look at the following resources:
+Скопируй `.env.example` в `.env.local` и заполни значения из Supabase Dashboard → Project Settings → API:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- `NEXT_PUBLIC_SUPABASE_URL` — Project URL
+- `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` — publishable key
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+`.env.local` не коммитится. Secret key, service role и пароль базы в клиент и в git не кладутся.
 
-## Deploy on Vercel
+## Проверки
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```bash
+npm run lint
+npm run typecheck
+npm run build
+```
