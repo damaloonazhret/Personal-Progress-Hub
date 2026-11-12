@@ -1,0 +1,1 @@
+drop table if exists public.ci_pipeline_smoke_test;
