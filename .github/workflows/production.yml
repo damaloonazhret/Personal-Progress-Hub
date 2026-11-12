@@ -1,14 +1,56 @@
+
 name: Production Release
 
 "on":
   workflow_dispatch:
 
+concurrency:
+  group: production-release
+  cancel-in-progress: false
+
 jobs:
-  approval-test:
-    name: Test production approval
+  deploy-production:
+    name: Deploy Production
     runs-on: ubuntu-latest
     environment: production
 
+    env:
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
+
     steps:
-      - name: Confirm approval
-        run: echo "Production deployment approved!"
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v3
+        with:
+          version: 3.1.0
+
+      - name: Validate configuration
+        run: |
+          for name in SUPABASE_DB_URL VERCEL_TOKEN VERCEL_ORG_ID VERCEL_PROJECT_ID; do
+            if [ -z "${!name}" ]; then
+              echo "::error::$name is not configured"
+              exit 1
+            fi
+          done
+
+      - name: Apply PROD migrations
+        run: supabase db push --yes --remote="$SUPABASE_DB_URL"
+
+      - name: Pull Vercel Production configuration
+        run: npx --yes vercel@65.14.0 pull --yes --environment=production --token="$VERCEL_TOKEN"
+
+      - name: Build Production application
+        run: npx --yes vercel@65.14.0 build --prod --token="$VERCEL_TOKEN"
+
+      - name: Deploy to Vercel Production
+        run: npx --yes vercel@65.14.0 deploy --prebuilt --prod --token="$VERCEL_TOKEN"
