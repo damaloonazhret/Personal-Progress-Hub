@@ -1,0 +1,14 @@
+name: Production Release
+
+"on":
+  workflow_dispatch:
+
+jobs:
+  approval-test:
+    name: Test production approval
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Confirm approval
+        run: echo "Production deployment approved!"
