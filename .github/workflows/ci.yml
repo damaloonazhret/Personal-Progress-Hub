@@ -56,7 +56,7 @@ jobs:
 
     env:
       SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
-      SUPABASE_PROJECT_ID: ${{ vars.SUPABASE_PROJECT_ID }}
+      SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
 
     steps:
       - name: Checkout repository
@@ -66,14 +66,6 @@ jobs:
         uses: supabase/setup-cli@v3
         with:
           version: 3.1.0
-
-      - name: Validate STAGE configuration
-        run: |
-          if [ -z "$SUPABASE_PROJECT_ID" ]; then
-            echo "::error::SUPABASE_PROJECT_ID is empty"
-            exit 1
-          fi
-          echo "STAGE project ID is configured"
 
       - name: Apply migrations to STAGE
         run: supabase db push --yes --remote="$SUPABASE_PROJECT_ID"
