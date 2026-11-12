@@ -69,4 +69,4 @@ jobs:
           version: 3.1.0
 
       - name: Apply migrations to STAGE
-      run: supabase db push --yes --remote="$SUPABASE_DB_URL"
+        run: supabase db push --yes --remote="$SUPABASE_DB_URL"
