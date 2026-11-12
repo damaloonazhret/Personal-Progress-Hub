@@ -46,3 +46,26 @@ jobs:
 
       - name: Build
         run: npm run build
+
+  deploy-staging-db:
+    name: Deploy STAGE database
+    needs: checks
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    environment: staging
+
+    env:
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      SUPABASE_PROJECT_ID: ${{ vars.SUPABASE_PROJECT_ID }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v3
+        with:
+          version: 3.1.0
+
+      - name: Apply migrations to STAGE
+        run: supabase db push --yes --remote="$SUPABASE_PROJECT_ID"
